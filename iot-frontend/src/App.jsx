@@ -6,7 +6,6 @@ import Navbar from "./components/Navbar";
 import Dashboard from "./pages/Dashboard";
 import Users from "./pages/Users";
 import AddUser from "./pages/AddUser";
-import Biometrics from "./pages/Biometrics";
 import Rooms from "./pages/Rooms";
 import QRCodes from "./pages/QRCodes";
 import Settings from "./pages/Settings";
