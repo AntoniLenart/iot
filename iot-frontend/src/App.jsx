@@ -24,7 +24,6 @@ export default function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/users" element={<Users />} />
               <Route path="/add-user" element={<AddUser />} />
-              <Route path="/biometrics" element={<Biometrics />} />
               <Route path="/rooms" element={<Rooms />} />
               <Route path="/qr-codes" element={<QRCodes />} />
               <Route path="/settings" element={<Settings />} />

@@ -3,9 +3,9 @@ export default function Dashboard() {
     <div className="p-6 flex flex-col h-[calc(100vh-64px)]">
       <h2 className="text-2xl font-semibold mb-6">Dashboard</h2>
 
-      {/* Duży prostokąt - miejsce na mapkę pokoi */}
+      {/* Miejsce na mapkę pokoi */}
       <div className="bg-white p-6 rounded-lg shadow flex-1 flex items-center justify-center mb-6">
-        <span className="text-gray-500 text-lg">🗺️ Tutaj będzie widok sal / mapka</span>
+        <span className="text-gray-500 text-lg">Tutaj będzie widok sal / mapka</span>
       </div>
 
       {/* Sekcja ostatnich logów */}

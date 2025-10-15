@@ -8,7 +8,6 @@ export default function Sidebar() {
         <Link to="/" className="hover:bg-gray-700 p-2 rounded">Dashboard</Link>
         <Link to="/users" className="hover:bg-gray-700 p-2 rounded">Zarządzanie użytkownikami</Link>
         <Link to="/add-user" className="hover:bg-gray-700 p-2 rounded">Dodaj użytkownika / RFID</Link>
-        <Link to="/biometrics" className="hover:bg-gray-700 p-2 rounded">Dodaj biometrię</Link>
         <Link to="/rooms" className="hover:bg-gray-700 p-2 rounded">Rezerwacja sal</Link>
         <Link to="/qr-codes" className="hover:bg-gray-700 p-2 rounded">Tworzenie QR</Link>
         <Link to="/logs" className="hover:bg-gray-700 p-2 rounded">Logi systemowe</Link>
