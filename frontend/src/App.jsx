@@ -1,6 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import Sidebar from "./components/Sidebar";
-import Navbar from "./components/Navbar";
+import Layout from "./components/Layout";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 // Pages
 import Dashboard from "./pages/Dashboard";
@@ -11,26 +11,30 @@ import QRCodes from "./pages/QRCodes";
 import Settings from "./pages/Settings";
 import Logs from "./pages/Logs";
 
+import Login from "./pages/Login";
+
 export default function App() {
   return (
     <Router>
-      <div className="flex">
-        <Sidebar />
-        <div className="ml-64 flex-1 flex flex-col h-screen">
-          <Navbar />
-          <div className="flex-1 p-4 overflow-hidden">
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/users" element={<Users />} />
-              <Route path="/add-user" element={<AddUser />} />
-              <Route path="/rooms" element={<Rooms />} />
-              <Route path="/qr-codes" element={<QRCodes />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/logs" element={<Logs />} />
-            </Routes>
-          </div>
-        </div>
-      </div>
+      <Routes>
+        <Route path="/" element={<Login />} />
+        <Route
+          element={
+            <ProtectedRoute>
+              <Layout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/users" element={<Users />} />
+          <Route path="/add-user" element={<AddUser />} />
+          <Route path="/rooms" element={<Rooms />} />
+          <Route path="/qr-codes" element={<QRCodes />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/logs" element={<Logs />} />
+      </Route>
+      </Routes>
     </Router>
   );
 }
