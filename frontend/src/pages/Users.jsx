@@ -2,47 +2,61 @@ import { useState } from "react";
 
 export default function Users() {
   const [users, setUsers] = useState([
-    { id: 1, name: "Jan Kowalski", email: "jan@example.com", rfid: "RFID-1234", biometrics: true, biometricId: "BIO-01", role: "Admin" },
-    { id: 2, name: "Anna Nowak", email: "anna@example.com", rfid: null, biometrics: false, biometricId: null, role: "User" },
-    { id: 3, name: "Piotr Zieliński", email: "piotr@example.com", rfid: "RFID-9876", biometrics: false, biometricId: null, role: "User" },
+    {
+      id: 1,
+      name: "Jan Kowalski",
+      email: "jan@example.com",
+      rfid: "RFID-1234",
+      biometrics: true,
+      biometricId: "BIO-01",
+      role: "Admin",
+    },
+    {
+      id: 2,
+      name: "Anna Nowak",
+      email: "anna@example.com",
+      rfid: null,
+      biometrics: false,
+      biometricId: null,
+      role: "User",
+    },
+    {
+      id: 3,
+      name: "Piotr Zieliński",
+      email: "piotr@example.com",
+      rfid: "RFID-9876",
+      biometrics: false,
+      biometricId: null,
+      role: "User",
+    },
   ]);
 
   const [search, setSearch] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
-  const [showBiometricModal, setShowBiometricModal] = useState(false);
-  const [biometricPlaceholder, setBiometricPlaceholder] = useState("");
 
-
-  {/* Biometric modal functionality */}
-  const openBiometricModal = (user) => {
-    setSelectedUser(user);
-    setBiometricPlaceholder(user.biometricId || "");
-    setShowBiometricModal(true);
-  };
-
-  const closeBiometricModal = () => {
-    setSelectedUser(null);
-    setBiometricPlaceholder("");
-    setShowBiometricModal(false);
-  };
-
-  // Simulate saving/changing biometric: set biometrics true and set an id
-  const saveBiometric = (biometricId) => {
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === selectedUser.id
-          ? { ...u, biometrics: true, biometricId: biometricId || `BIO-${Date.now()}` }
-          : u
-      )
-    );
-    closeBiometricModal();
-  };
-  
-  {/* Filter users based on search input */}
+  // Search filter
   const filteredUsers = users.filter(
     (u) =>
-      u.name.toLowerCase().includes(search.toLowerCase())
+      u.name.toLowerCase().includes(search.toLowerCase()) ||
+      (u.rfid && u.rfid.toLowerCase().includes(search.toLowerCase()))
   );
+
+  // Opening modal
+  const openUserModal = (user) => {
+    setSelectedUser({ ...user });
+  };
+
+  const closeUserModal = () => {
+    setSelectedUser(null);
+  };
+
+  // Saves changes
+  const saveUserChanges = () => {
+    setUsers((prev) =>
+      prev.map((u) => (u.id === selectedUser.id ? selectedUser : u))
+    );
+    closeUserModal();
+  };
 
   return (
     <div className="p-6">
@@ -50,32 +64,35 @@ export default function Users() {
         <h2 className="text-4xl font-semibold">Użytkownicy</h2>
         <input
           type="text"
-          placeholder="🔍 Wyszukaj użytkownika"
+          placeholder="🔍 Wyszukaj po imieniu lub RFID"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full sm:w-72 border rounded-lg p-2 focus:ring-2 focus:ring-blue-500"
         />
       </div>
 
-      {/* Table */}
+      {/* User table */}
       <div className="rounded-xl shadow-lg border border-gray-300 overflow-hidden">
         <table className="w-full bg-white text-center">
           <thead className="bg-gray-100 text-gray-700 text-sm uppercase">
             <tr>
               <th className="p-3">Imię i nazwisko</th>
-              <th className="p-3">Email</th>
+              <th className="p-3 hidden md:table-cell">Email</th> {/* hidden on small screens */}
               <th className="p-3">RFID</th>
               <th className="p-3">Biometria</th>
-              <th className="p-3">Rola</th>
-              <th className="p-3">Akcje</th>
+              <th className="p-3 hidden md:table-cell">Rola</th> {/* hidden on small screens */}
             </tr>
           </thead>
           <tbody>
             {filteredUsers.length > 0 ? (
               filteredUsers.map((u) => (
-                <tr key={u.id} className="border-b hover:bg-gray-50">
+                <tr
+                  key={u.id}
+                  className="border-b hover:bg-blue-50 cursor-pointer transition"
+                  onClick={() => openUserModal(u)}
+                >
                   <td className="p-3">{u.name}</td>
-                  <td className="p-3">{u.email}</td>
+                  <td className="p-3 hidden md:table-cell">{u.email}</td> {/* hidden on small screens */}
                   <td className="p-3">{u.rfid || "Nie przypisano"}</td>
                   <td className="p-3">
                     {u.biometrics ? (
@@ -84,30 +101,12 @@ export default function Users() {
                       <span className="text-red-500 font-semibold">❌</span>
                     )}
                   </td>
-                  <td className="p-3">{u.role}</td>
-                  <td className="p-3 space-x-2">
-
-                    <button
-                      onClick={() => openBiometricModal(u)}
-                      className="text-green-600 hover:underline"
-                    >
-                      {u.biometrics ? "Zmień biometrię" : "Dodaj biometrię"}
-                    </button>
-
-                    <button
-                      onClick={() =>
-                        setUsers((prev) => prev.filter((item) => item.id !== u.id))
-                      }
-                      className="text-red-600 hover:underline"
-                    >
-                      Usuń
-                    </button>
-                  </td>
+                  <td className="p-3 hidden md:table-cell">{u.role}</td> {/* hidden on small screens */}
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan="6" className="p-6 text-gray-500 italic">
+                <td colSpan="5" className="p-6 text-gray-500 italic">
                   Brak wyników dla: <b>{search}</b>
                 </td>
               </tr>
@@ -116,73 +115,113 @@ export default function Users() {
         </table>
       </div>
 
-      {/* Biometric modal */}
-      {showBiometricModal && selectedUser && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-xl shadow-lg w-96">
-            <h3 className="text-lg font-semibold mb-4 text-center">
-              {selectedUser.biometrics ? "Zmień biometrię dla" : "Dodaj biometrię dla"}{" "}
-              {selectedUser.name}
+      {/* User modal edit */}
+      {selectedUser && (
+          <div
+            className="fixed inset-0 backdrop-blur-md bg-white/20 flex items-center justify-center z-50 transition"
+            onClick={closeUserModal}
+          >
+            <div
+              className="bg-white p-6 rounded-2xl shadow-xl w-full max-w-lg"
+              onClick={(e) => e.stopPropagation()}
+            >
+            <h3 className="text-xl font-semibold mb-4 text-center">
+              Edytuj dane użytkownika
             </h3>
 
-            <div className="mb-4">
-              <input
-                type="text"
-                value={biometricPlaceholder}
-                onChange={(e) => setBiometricPlaceholder(e.target.value)}
-                placeholder="Wpisz identyfikator biometryczny lub zeskanuj..."
-                className="w-full border rounded-lg p-2 text-center"
-              />
-              <p className="text-sm text-gray-500 mt-2 text-center">
-                Możesz wpisać ID lub zostawić puste, aby wygenerować nowe.
-              </p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">
+                  Imię i nazwisko
+                </label>
+                <input
+                  type="text"
+                  value={selectedUser.name}
+                  onChange={(e) =>
+                    setSelectedUser({ ...selectedUser, name: e.target.value })
+                  }
+                  className="w-full border rounded-lg p-2 text-center"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={selectedUser.email}
+                  onChange={(e) =>
+                    setSelectedUser({ ...selectedUser, email: e.target.value })
+                  }
+                  className="w-full border rounded-lg p-2 text-center"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">RFID</label>
+                <input
+                  type="text"
+                  value={selectedUser.rfid || ""}
+                  onChange={(e) =>
+                    setSelectedUser({ ...selectedUser, rfid: e.target.value })
+                  }
+                  placeholder="Wpisz lub zeskanuj RFID"
+                  className="w-full border rounded-lg p-2 text-center"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">
+                  Biometria
+                </label>
+                <input
+                  type="text"
+                  value={selectedUser.biometricId || ""}
+                  onChange={(e) =>
+                    setSelectedUser({
+                      ...selectedUser,
+                      biometricId: e.target.value,
+                      biometrics: !!e.target.value,
+                    })
+                  }
+                  placeholder="Wpisz identyfikator biometryczny"
+                  className="w-full border rounded-lg p-2 text-center"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">Rola</label>
+                <select
+                  value={selectedUser.role}
+                  onChange={(e) =>
+                    setSelectedUser({ ...selectedUser, role: e.target.value })
+                  }
+                  className="w-full border rounded-lg p-2 text-center"
+                >
+                  <option value="User">User</option>
+                  <option value="Admin">Admin</option>
+                </select>
+              </div>
             </div>
 
-            <div className="flex justify-end space-x-2">
+            <div className="flex justify-end space-x-2 mt-6">
               <button
-                onClick={closeBiometricModal}
+                onClick={closeUserModal}
                 className="px-4 py-2 rounded-lg border"
               >
                 Anuluj
               </button>
               <button
-                onClick={() => saveBiometric(biometricPlaceholder)}
-                className="px-4 py-2 rounded-lg bg-green-600 text-white"
+                onClick={saveUserChanges}
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white"
               >
-                Zapisz
+                Zapisz zmiany
               </button>
             </div>
           </div>
         </div>
       )}
     </div>
-  );
-}
-
-/* Helper form component for RFID (keeps Users component cleaner) */
-function RFIDForm({ initialValue, onCancel, onSave }) {
-  const [value, setValue] = useState(initialValue || "");
-
-  return (
-    <>
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder="Wpisz lub zeskanuj RFID"
-        className="w-full border rounded-lg p-2 mb-4 text-center"
-      />
-      <div className="flex justify-end space-x-2">
-        <button onClick={onCancel} className="px-4 py-2 rounded-lg border">
-          Anuluj
-        </button>
-        <button
-          onClick={() => onSave(value)}
-          className="px-4 py-2 rounded-lg bg-blue-600 text-white"
-        >
-          Zapisz
-        </button>
-      </div>
-    </>
   );
 }
