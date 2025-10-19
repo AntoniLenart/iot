@@ -26,7 +26,7 @@ export default function Layout() {
       {/* Blur background */}
       {isSidebarOpen && (
         <div
-          className="fixed inset-0 backdrop-blur-md bg-opacity-40 lg:hidden z-40"
+          className="fixed inset-0 backdrop-blur-md bg-black/40 lg:hidden z-40"
           onClick={() => setIsSidebarOpen(false)}
         ></div>
       )}
