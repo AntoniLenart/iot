@@ -15,7 +15,7 @@ BEGIN
     CREATE TYPE credential_type AS ENUM ('rfid_card','fingerprint','qr_code');
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'device_type') THEN
-    CREATE TYPE device_type AS ENUM ('rfid_reader','fingerprint_reader','camera_qr','door_controller','gateway');
+    CREATE TYPE device_type AS ENUM ('rfid_reader','fingerprint_reader','camera','door_controller','gateway');
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_type') THEN
     CREATE TYPE user_type AS ENUM ('employee','guest','service','admin');
@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS devices (
   last_seen timestamptz,
   is_active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
   metadata jsonb DEFAULT '{}'
 );
 
@@ -131,15 +132,49 @@ CREATE TABLE IF NOT EXISTS access_policies (
   policy_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
   description text,
-  -- warunki w formie json: { "rooms": [...], "doors": [...], "time_ranges": [...], "days": [...] }
-  rules jsonb NOT NULL DEFAULT '[]'::jsonb,
   default_action access_action NOT NULL DEFAULT 'deny',
+  is_active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- TABLES: policy_rooms, policy_doors, policy_days, policy_time_ranges
+-- Definicja szczegółowych reguł dostępu w ramach polityki
+CREATE TABLE IF NOT EXISTS policy_rooms (
+  policy_room_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  policy_id uuid REFERENCES access_policies(policy_id) ON DELETE CASCADE ON UPDATE CASCADE,
+  room_id uuid REFERENCES rooms(room_id) ON DELETE CASCADE,
+  include_subdoors boolean NOT NULL DEFAULT true,  -- czy automatycznie obejmuje wszystkie drzwi tego pokoju
+  is_active boolean NOT NULL DEFAULT true,
+  metadata jsonb DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS policy_doors (
+  policy_door_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  policy_room_id uuid REFERENCES policy_rooms(policy_room_id) ON DELETE CASCADE ON UPDATE CASCADE,
+  door_id uuid REFERENCES doors(door_id) ON DELETE CASCADE,
+  is_active boolean NOT NULL DEFAULT true,
+  metadata jsonb DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS policy_days (
+  policy_day_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  policy_door_id uuid REFERENCES policy_doors(policy_door_id) ON DELETE CASCADE ON UPDATE CASCADE,
+  day_of_week smallint NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),  -- 0=niedziela, 6=sobota
+  is_active boolean NOT NULL DEFAULT true
+);
+
+CREATE TABLE IF NOT EXISTS policy_time_ranges (
+  time_range_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  policy_day_id uuid REFERENCES policy_days(policy_day_id) ON DELETE CASCADE ON UPDATE CASCADE,
+  is_active boolean NOT NULL DEFAULT true,
+  start_time time NOT NULL,
+  end_time time NOT NULL,
+  CHECK (end_time > start_time)
+);
+
 CREATE INDEX IF NOT EXISTS ix_access_policies_name ON access_policies (lower(name));
-CREATE INDEX IF NOT EXISTS ix_access_policies_rules_gin ON access_policies USING gin (rules);
+CREATE INDEX IF NOT EXISTS ix_access_policies_active ON access_policies (is_active);
 
 -- TABLE LINK: access_group -> access_policy (które polityki przypisane są grupom)
 CREATE TABLE IF NOT EXISTS group_policies (
@@ -149,17 +184,17 @@ CREATE TABLE IF NOT EXISTS group_policies (
   assigned_at timestamptz NOT NULL DEFAULT now()
 );
 
--- TABLE: credentials (karty RFID, fingerprint templates, mobile tokens)
+-- TABLE: credentials (karty RFID, fingerprint templates)
 CREATE TABLE IF NOT EXISTS credentials (
   credential_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid REFERENCES users(user_id) ON DELETE CASCADE,
   credential_type credential_type NOT NULL,
-  identifier text NOT NULL,                -- np. UID karty, nazwa tokena, fingerprint id
+  identifier text NOT NULL,                -- np. UID karty, fingerprint id
   issued_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
   issued_at timestamptz NOT NULL DEFAULT now(),
   expires_at timestamptz,
   is_active boolean NOT NULL DEFAULT true,
-  metadata jsonb DEFAULT '{}',             -- np. token issuer, device that enrolled it
+  metadata jsonb DEFAULT '{}',             -- np. issuer, device that enrolled it
   UNIQUE (credential_type, identifier)
 );
 
@@ -204,6 +239,7 @@ CREATE TABLE IF NOT EXISTS qr_codes (
   created_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   valid_from timestamptz NOT NULL DEFAULT now(),
+  CHECK (valid_until > valid_from),
   valid_until timestamptz NOT NULL,
   usage_limit int NOT NULL DEFAULT 1,
   usage_count int NOT NULL DEFAULT 0,
@@ -220,6 +256,7 @@ CREATE TABLE IF NOT EXISTS reservations (
   user_id uuid REFERENCES users(user_id) ON DELETE SET NULL,
   start_at timestamptz NOT NULL,
   end_at timestamptz NOT NULL,
+  CHECK (end_at > start_at),
   created_at timestamptz NOT NULL DEFAULT now(),
   created_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
   status text NOT NULL DEFAULT 'confirmed', -- confirmed, cancelled, pending
@@ -291,11 +328,95 @@ CREATE TABLE IF NOT EXISTS admin_audit (
 
 CREATE INDEX IF NOT EXISTS ix_admin_audit_time ON admin_audit (occurred_at);
 
--- CONSTRAINTS
-ALTER TABLE reservations
-  ADD CONSTRAINT chk_reservation_times CHECK (end_at > start_at);
 
-ALTER TABLE qr_codes
-  ADD CONSTRAINT chk_qr_valid_until CHECK (valid_until > valid_from);
+-- TRIGGER FUNCTION: update timestamp automatically
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at := now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ADD TRIGGER
+DROP TRIGGER IF EXISTS trg_users_updated_at ON users;
+CREATE TRIGGER trg_users_updated_at
+BEFORE UPDATE ON users
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS trg_devices_updated_at ON devices;
+CREATE TRIGGER trg_devices_updated_at
+BEFORE UPDATE ON devices
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS trg_access_policies_updated_at ON access_policies;
+CREATE TRIGGER trg_access_policies_updated_at
+BEFORE UPDATE ON access_policies
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
+
+-- TRIGGER FUNCTION: validate user data
+CREATE OR REPLACE FUNCTION validate_user_data()
+RETURNS TRIGGER AS $$
+DECLARE
+  cleaned_phone text;
+BEGIN
+  IF trim(NEW.first_name) = '' OR trim(NEW.last_name) = '' THEN
+    RAISE EXCEPTION 'First name and last name cannot be empty';
+  END IF;
+
+  IF NEW.email IS NOT NULL AND POSITION('@' IN NEW.email) = 0 THEN
+    RAISE EXCEPTION 'Invalid email address: %', NEW.email;
+  END IF;
+
+  IF NEW.phone IS NOT NULL THEN
+    cleaned_phone := regexp_replace(NEW.phone, '[^0-9+]', '', 'g');
+    IF length(cleaned_phone) - length(replace(cleaned_phone, '+', '')) > 1 THEN
+      RAISE EXCEPTION 'Invalid phone number: multiple "+" signs found (%).', NEW.phone;
+    END IF;
+    IF cleaned_phone !~ '^\+?[0-9]+$' THEN
+      RAISE EXCEPTION 'Invalid phone number format: "%". Allowed format: optional "+" followed by digits only.', cleaned_phone;
+    END IF;
+    NEW.phone := cleaned_phone;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ADD TRIGGER
+DROP TRIGGER IF EXISTS trg_users_validate ON users;
+CREATE TRIGGER trg_users_validate
+BEFORE INSERT OR UPDATE ON users
+FOR EACH ROW
+EXECUTE FUNCTION validate_user_data();
+
+-- FUNCTION: (de)activate inactive devices based on last_seen
+CREATE OR REPLACE FUNCTION set_devices_active()
+RETURNS void AS $$
+BEGIN
+  UPDATE devices
+  SET is_active = false
+  WHERE last_seen < now() - interval '24 hours'
+    AND is_active = true;
+
+  UPDATE devices
+  SET is_active = true
+  WHERE last_seen >= now() - interval '24 hours'
+    AND is_active = false;
+END;
+$$ LANGUAGE plpgsql;
+
+-- FUNCTION: set user (in)active
+CREATE OR REPLACE FUNCTION set_user_active(p_user_id uuid, p_active boolean)
+RETURNS void AS $$
+BEGIN
+  UPDATE users
+  SET is_active = p_active
+  WHERE user_id = p_user_id;
+END;
+$$ LANGUAGE plpgsql;
 
 -- End
