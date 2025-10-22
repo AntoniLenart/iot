@@ -148,7 +148,7 @@ Fingerprint match SUCCESS
 | 0x01 | Odcisk nie pasuje |
 | 0x08 | Nie wykryto palca w czasie oczekiwania (Timeout)|
 
-#### 6.4 Zapisanie wartosci wlasnej do pliku o wybranej nazwie
+#### 6.4 Zapisanie wartości własnej do pliku o wybranej nazwie
 
 Tworzy jednocześnie pliki `.bin` i `.json` z aktualnie zeskanowanego odcisku palca.
 
