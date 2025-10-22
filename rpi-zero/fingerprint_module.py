@@ -394,7 +394,7 @@ if __name__ == "__main__":
         elif args.cmd == "save_eigen":
             print("Place finger for eigenvalue capture...")
             data = fp.upload_eigenvalues()
-            bin_path=f"{args.path}.bin"
+            bin_path = f"{args.path}.bin"
             with open(bin_path, "wb") as f:
                 f.write(data)
             print(f"Eigenvalue saved to {args.path}.bin")
