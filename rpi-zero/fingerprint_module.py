@@ -232,7 +232,7 @@ class FingerprintModule:
         return bytes(out)
     
     # ------------------------
-    # Utility: Convertion tools (JSON, bin)
+    # Utility: Conversion tools (JSON, bin)
     # ------------------------
 
     def eigen_to_json(self, eigen_bytes: bytes, filename: str = None) -> dict:
