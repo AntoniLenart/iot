@@ -10,6 +10,9 @@ import serial
 import time
 import struct
 from typing import Optional, Tuple, List
+import base64
+import json
+from pathlib import Path
 
 # Default serial port for Raspberry Pi
 DEFAULT_PORT = "/dev/serial0"
@@ -158,70 +161,6 @@ class FingerprintModule:
         return cmd, params, data
 
     # ------------------------
-    # High-level commands (8-byte)
-    # ------------------------
-
-    def enroll_step(self, step_num: int, user_id: int, privilege: int = 1) -> int:
-        """
-        Enroll step: step_num = 1,2,3 => CMD 0x01 | 0x02 | 0x03
-        user_id: 1..0xFFF
-        privilege: 1..3
-        Returns Q3 (ACK code)
-        """
-        if step_num not in (1, 2, 3):
-            raise ValueError("step_num must be 1,2,3")
-
-        cmd_map = {1: 0x01, 2: 0x02, 3: 0x03}
-        cmd = cmd_map[step_num]
-        uid_hi = (user_id >> 8) & 0xFF
-        uid_lo = user_id & 0xFF
-        packet = self._build_simple_command(cmd, uid_hi, uid_lo, privilege & 0xFF)
-        self._send(packet)
-        _, params, _ = self._receive_response()
-        return params[2]
-
-    def delete_user(self, user_id: int) -> int:
-        """CMD 0x04 delete specified user. Returns Q3 (ACK code)."""
-        uid_hi = (user_id >> 8) & 0xFF
-        uid_lo = user_id & 0xFF
-        packet = self._build_simple_command(0x04, uid_hi, uid_lo, 0x00)
-        self._send(packet)
-        _, params, _ = self._receive_response()
-        return params[2]
-
-    def delete_all(self) -> int:
-        """CMD 0x05 delete all users. Returns Q3."""
-        packet = self._build_simple_command(0x05)
-        self._send(packet)
-        _, params, _ = self._receive_response()
-        return params[2]
-
-    def compare_1_to_1(self, user_id: int) -> int:
-        """CMD 0x0B Compare 1:1 with specified ID. Returns Q3 (ACK)."""
-        uid_hi = (user_id >> 8) & 0xFF
-        uid_lo = user_id & 0xFF
-        packet = self._build_simple_command(0x0B, uid_hi, uid_lo, 0x00)
-        self._send(packet)
-        _, params, _ = self._receive_response()
-        return params[2]
-
-    def compare_1_to_n(self) -> Tuple[int, Optional[int], Optional[int]]:
-        """
-        CMD 0x0C Compare 1:N. On success response includes UserID high, low, privilege in Q1/Q2/Q3 positions.
-        Returns (ack_code, user_id or None, privilege or None)
-        """
-        packet = self._build_simple_command(0x0C)
-        self._send(packet)
-        cmd, params, _ = self._receive_response()
-        # params: [user_hi, user_lo, privilege or ACK_*]
-        # In some cases params[2] might be ACK_NOUSER / ACK_TIMEOUT
-        if params[2] == ACK_NOUSER or params[2] == ACK_TIMEOUT:
-            return params[2], None, None
-        user_id = (params[0] << 8) | params[1]
-        privilege = params[2]
-        return ACK_SUCCESS, user_id, privilege
-
-    # ------------------------
     # Data commands (image / eigenvalues)
     # ------------------------
     def upload_image(self) -> bytes:
@@ -264,20 +203,6 @@ class FingerprintModule:
         _, params, _ = self._receive_response()
         return params[2]
 
-    def upload_user_eigen(self, user_id: int) -> bytes:
-        """
-        CMD 0x31 Upload the DSP module database specified user eigenvalue (response > 8 bytes).
-        Returns the user eigenvalue payload (includes user id, privilege and eigenvalue).
-        """
-        uid_hi = (user_id >> 8) & 0xFF
-        uid_lo = user_id & 0xFF
-        packet = self._build_simple_command(0x31, uid_hi, uid_lo, 0x00)
-        self._send(packet)
-        _, params, data = self._receive_response(expect_data=True)
-        if data is None:
-            raise FingerprintError("No eigenvalue data received")
-        return data
-
     # ------------------------
     # Utility: image unpacking
     # ------------------------
@@ -305,34 +230,68 @@ class FingerprintModule:
             out.append(pix1)
             out.append(pix2)
         return bytes(out)
+    
+    # ------------------------
+    # Utility: Convertion tools (JSON, bin)
+    # ------------------------
 
-    # ------------------------
-    # High-level convenience flows
-    # ------------------------
-    def enroll_user(self, user_id: int, privilege: int = 1, wait_msg: Optional[callable] = None) -> int:
+    def eigen_to_json(self, eigen_bytes: bytes, filename: str = None) -> dict:
         """
-        Full 3-step enroll flow:
-          1) send CMD 0x01 then ask to place finger
-          2) send CMD 0x02 then ask to place finger again
-          3) send CMD 0x03 then ask to place finger third time
-        wait_msg: optional callable to give user prompts, called with a string
-        Returns final Q3 code
+        Convert raw eigenvalue bytes (193 bytes) into a JSON-serializable dict.
+
+        Args:
+            eigen_bytes (bytes): Raw eigenvalue data read from module (.bin format)
+            filename (str, optional): If provided, save JSON to this file name
+
+        Returns:
+            dict: JSON-ready dictionary representation of the eigenvalue
         """
-        # Step 1
-        if wait_msg:
-            wait_msg("Place finger for 1st scan.")
-        q1 = self.enroll_step(1, user_id, privilege)
-        if q1 != ACK_SUCCESS:
-            return q1
-        if wait_msg:
-            wait_msg("Remove finger, then place finger for 2nd scan.")
-        q2 = self.enroll_step(2, user_id, privilege)
-        if q2 != ACK_SUCCESS:
-            return q2
-        if wait_msg:
-            wait_msg("Remove finger, then place finger for 3rd scan.")
-        q3 = self.enroll_step(3, user_id, privilege)
-        return q3
+        data = {
+            "format": "fingerprint_eigenvalue_v1",
+            "length": len(eigen_bytes),
+            "encoding": "base64",
+            "eigen_b64": base64.b64encode(eigen_bytes).decode("ascii"),
+        }
+
+        if filename:
+            with open(filename, "w") as f:
+                json.dump(data, f, indent=2)
+            print(f"Eigenvalue saved to JSON file: {filename}")
+
+        return data
+    
+    def eigen_from_json(self, json_data, bin_filename: str = None) -> bytes:
+        """
+        Convert a JSON representation of an eigenvalue back into raw bytes.
+
+        Args:
+            json_data (str | dict): JSON string or loaded dict containing eigenvalue
+            bin_filename (str, optional): If provided, save bytes to .bin file
+
+        Returns:
+            bytes: Raw eigenvalue bytes suitable for upload to module
+        """
+        # Load JSON string if needed
+        if isinstance(json_data, str):
+            if Path(json_data).is_file():
+                with open(json_data, "r") as f:
+                    obj = json.load(f)
+            else:
+                obj = json.loads(json_data)
+        else:
+            obj = json_data
+
+        if obj.get("format") != "fingerprint_eigenvalue_v1":
+            raise ValueError("Invalid or missing format tag in JSON data")
+
+        eigen_bytes = base64.b64decode(obj["eigen_b64"])
+
+        if bin_filename:
+            with open(bin_filename, "wb") as f:
+                f.write(eigen_bytes)
+            print(f"Eigenvalue written to binary file: {bin_filename}")
+
+        return eigen_bytes
 
 # ------------------------
 # CLI
@@ -344,11 +303,6 @@ if __name__ == "__main__":
             "Fingerprint Module CLI Utility\n"
             "--------------------------------\n"
             "Control your UART fingerprint sensor connected to Raspberry Pi.\n\n"
-            "Examples:\n"
-            "  python3 fingerprint_extended.py enroll 1          Enroll new user with ID=1\n"
-            "  python3 fingerprint_extended.py identify           Identify a finger (1:N)\n"
-            "  python3 fingerprint_extended.py verify 1           Verify finger against ID=1\n"
-            "  python3 fingerprint_extended.py upload_image       Capture raw fingerprint image\n"
             "\n"
             "Tip: Use --help after any command for details, e.g.\n"
             "  python3 fingerprint_extended.py enroll --help"
@@ -362,34 +316,15 @@ if __name__ == "__main__":
 
     sub = ap.add_subparsers(dest="cmd", title="Commands", metavar="<command>")
 
-    # ---------------- Basic ----------------
-    basic = [
-        ("enroll", "Enroll a user (3 scans required)"),
-        ("delete", "Delete a specific user"),
-        ("delete_all", "Delete all enrolled users"),
-        ("identify", "Identify a finger (1:N match)"),
-        ("verify", "Verify finger against a specific user ID")
-    ]
-    for name, desc in basic:
-        sub.add_parser(name, help=desc)
-
-    sub._name_parser_map["enroll"].add_argument("id", type=int, help="User ID (1–N)")
-    sub._name_parser_map["enroll"].add_argument("--priv", type=int, default=1, help="Privilege level (default: 1)")
-    sub._name_parser_map["delete"].add_argument("id", type=int, help="User ID to delete")
-    sub._name_parser_map["verify"].add_argument("id", type=int, help="User ID to verify")
-
     # ---------------- Image & Eigen ----------------
     sub.add_parser("upload_image", help="Capture and save fingerprint image (124x148 packed)")
     sub.add_parser("upload_eigen", help="Capture and save eigenvalue from current scan")
 
-    up_user = sub.add_parser("upload_user_eigen", help="Download stored eigenvalue of a user")
-    up_user.add_argument("id", type=int, help="User ID to download")
-
-    cmp_eigen = sub.add_parser("compare_eigen", help="Compare saved eigenvalue (.bin) with live scan")
+    cmp_eigen = sub.add_parser("compare_eigen", help="Compare saved eigenvalue (.bin or .json) with live scan")
     cmp_eigen.add_argument("path", help="Path to eigenvalue file (.bin)")
 
-    save_eigen = sub.add_parser("save_eigen", help="Capture eigenvalue and save to file")
-    save_eigen.add_argument("path", help="Path to save eigenvalue file (.bin)")
+    save_eigen = sub.add_parser("save_eigen", help="Capture eigenvalue and save to file (JSON and bin)")
+    save_eigen.add_argument("path", help="Path to save eigenvalue file")
 
     # Show help if no command is given
     if len(sys.argv) == 1:
@@ -401,38 +336,7 @@ if __name__ == "__main__":
     fp = FingerprintModule(port=args.port, baud=args.baud, timeout=args.timeout)
 
     try:
-        if args.cmd == "enroll":
-            def msg(s): print(s)
-            rc = fp.enroll_user(args.id, args.priv, wait_msg=msg)
-            print("Enroll final code:", rc)
-
-        elif args.cmd == "delete":
-            rc = fp.delete_user(args.id)
-            print("Delete result:", rc)
-
-        elif args.cmd == "delete_all":
-            rc = fp.delete_all()
-            print("Delete all result:", rc)
-
-        elif args.cmd == "identify":
-            print("Place finger to identify...")
-            ack, uid, priv = fp.compare_1_to_n()
-            if ack == ACK_SUCCESS and uid is not None:
-                print(f"Identified user {uid} privilege {priv}")
-            elif ack == ACK_NOUSER:
-                print("No match found")
-            else:
-                print(f"Identification result code: {ack}")
-
-        elif args.cmd == "verify":
-            print(f"Place finger for verification against user {args.id}")
-            ack = fp.compare_1_to_1(args.id)
-            if ack == ACK_SUCCESS:
-                print("Verified successfully")
-            else:
-                print("Verification failed or no match, ACK:", ack)
-
-        elif args.cmd == "upload_image":
+        if args.cmd == "upload_image":
             print("Capturing image... place finger on sensor.")
             data = fp.upload_image()
             print(f"Image captured: {len(data)} bytes")
@@ -447,22 +351,37 @@ if __name__ == "__main__":
             with open("eigenvalue.bin", "wb") as f:
                 f.write(data)
             print("Saved eigenvalue to eigenvalue.bin")
-
-        elif args.cmd == "upload_user_eigen":
-            data = fp.upload_user_eigen(args.id)
-            print(f"Uploaded eigenvalue for user {args.id}: {len(data)} bytes")
-            with open(f"user_{args.id}_eigen.bin", "wb") as f:
-                f.write(data)
-            print(f"Saved to user_{args.id}_eigen.bin")
+            fp.eigen_to_json(data, filename="eigenvalue.json")
+            print("Saved eigenvalue to eigenvalue.json")
 
         elif args.cmd == "compare_eigen":
-            with open(args.path, "rb") as f:
-                eigen = f.read()
+
+            # --- Load eigenvalue (binary or JSON) ---
+            eigen_path = args.path
+
+            try:
+                if eigen_path.lower().endswith(".json"):
+                    print(f"Loading eigenvalue from JSON file: {eigen_path}")
+                    with open(eigen_path, "r") as f:
+                        data = json.load(f)
+                    if data.get("format") != "fingerprint_eigenvalue_v1":
+                        raise ValueError("Invalid JSON eigenvalue format.")
+                    eigen = base64.b64decode(data["eigen_b64"])
+                else:
+                    print(f"Loading eigenvalue from binary file: {eigen_path}")
+                    with open(eigen_path, "rb") as f:
+                        eigen = f.read()
+            except Exception as e:
+                print("Error reading eigenvalue file:", e)
+                sys.exit(1)
+
+            # --- Run comparison ---
             print(f"Loaded eigenvalue ({len(eigen)} bytes). Place finger for comparison.")
             rc = fp.download_eigen_compare(eigen)
+
             print("Compare result ACK:", rc)
 
-            # Interpret ACK code
+            # --- Interpret ACK codes ---
             if rc == 0x00:
                 print("Fingerprint match SUCCESS")
             elif rc == 0x01:
@@ -475,9 +394,14 @@ if __name__ == "__main__":
         elif args.cmd == "save_eigen":
             print("Place finger for eigenvalue capture...")
             data = fp.upload_eigenvalues()
-            with open(args.path, "wb") as f:
+            bin_path=f"{args.path}.bin"
+            with open(bin_path, "wb") as f:
                 f.write(data)
-            print(f"Eigenvalue saved to {args.path}")
+            print(f"Eigenvalue saved to {args.path}.bin")
+            json_path = f"{args.path}.json"
+            print(json_path)
+            fp.eigen_to_json(data,json_path)
+            print(f"Eigenvalue saved to {args.path}.json")
         else:
             ap.print_help()
 
