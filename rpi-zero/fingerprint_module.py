@@ -399,7 +399,6 @@ if __name__ == "__main__":
                 f.write(data)
             print(f"Eigenvalue saved to {args.path}.bin")
             json_path = f"{args.path}.json"
-            print(json_path)
             fp.eigen_to_json(data,json_path)
             print(f"Eigenvalue saved to {args.path}.json")
         else:
