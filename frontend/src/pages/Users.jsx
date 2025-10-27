@@ -33,6 +33,8 @@ export default function Users() {
 
   const [search, setSearch] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
 
   // Search filter
   const filteredUsers = users.filter(
@@ -48,6 +50,7 @@ export default function Users() {
 
   const closeUserModal = () => {
     setSelectedUser(null);
+    setShowDeleteConfirm(false);
   };
 
   // Saves changes
@@ -57,6 +60,7 @@ export default function Users() {
     );
     closeUserModal();
   };
+
 
   return (
     <div className="p-6">
@@ -205,23 +209,85 @@ export default function Users() {
               </div>
             </div>
 
-            <div className="flex justify-end space-x-2 mt-6">
+            <div className="flex items-center mt-6">
+              {/* Lewy przycisk: Usuń użytkownika */}
               <button
-                onClick={closeUserModal}
-                className="px-4 py-2 rounded-lg border"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={selectedUser.role === "Admin"}
+                className={`px-4 py-2 rounded-lg text-white
+                ${selectedUser.role === "Admin"
+                  ? "bg-gray-400 cursor-not-allowed"
+                  : "bg-red-600 hover:bg-red-700"
+                }`}
+                title={selectedUser.role === "Admin" ? "Nie można usunąć administratora" : ""}
               >
-                Anuluj
+                🗑️ Usuń użytkownika
               </button>
-              <button
-                onClick={saveUserChanges}
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white"
-              >
-                Zapisz zmiany
-              </button>
+              {/* Prawa strona: Anuluj / Zapisz */}
+              <div className="ml-auto space-x-2">
+                <button
+                  onClick={closeUserModal}
+                  className="px-4 py-2 rounded-lg border"
+                >
+                  Anuluj
+                </button>
+                <button
+                  onClick={saveUserChanges}
+                  className="px-4 py-2 rounded-lg bg-blue-600 text-white"
+                >
+                  Zapisz zmiany
+                </button>
+              </div>
             </div>
           </div>
         </div>
+
+        
       )}
+
+              {/* Modal potwierdzenia usunięcia */}
+        {showDeleteConfirm && (
+          <div
+            className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60]"
+            onClick={() => setShowDeleteConfirm(false)}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h4 className="text-lg font-semibold mb-3 text-center">
+                Potwierdź usunięcie
+              </h4>
+              <p className="text-sm text-gray-700 mb-4 text-center">
+                Czy na pewno chcesz usunąć tego użytkownika? Tego nie można cofnąć.
+              </p>
+
+              <div className="bg-gray-50 border rounded-xl p-3 mb-5 text-sm">
+                <div className="font-semibold">{selectedUser?.name}</div>
+                <div className="text-gray-600">{selectedUser?.email}</div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 px-4 py-2 rounded-lg border"
+                >
+                  Anuluj
+                </button>
+                <button
+                  onClick={() => {
+                    setUsers(prev => prev.filter(u => u.id !== selectedUser.id));
+                    closeUserModal();
+                  }}
+                  className="flex-1 px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700"
+                >
+                  Tak, usuń
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
     </div>
   );
 }
