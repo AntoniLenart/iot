@@ -1,0 +1,12 @@
+#           MAIN DOOR
+user rp1
+topic write access/door/main/request/#
+topic read  access/door/main/decision
+#           HR DOOR
+user rp2
+topic write access/door/hr/request/#
+topic read  access/door/hr/decision
+#           BACKEND
+user backend
+topic read  access/door/+/request/#
+topic write access/door/+/decision

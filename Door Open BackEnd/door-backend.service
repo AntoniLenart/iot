@@ -1,0 +1,20 @@
+[Unit]
+Description=Door Access Backend (MQTT listener)
+After=network-online.target mosquitto.service
+Wants=network-online.target
+
+[Service]
+User=dooropener
+Group=dooropener
+WorkingDirectory=/opt/door-backend
+EnvironmentFile=/opt/door-backend/.env
+ExecStart=/opt/door-backend/venv/bin/python /opt/door-backend/dooropenapp.py
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
