@@ -9,4 +9,9 @@ topic read  access/door/hr/decision
 #           BACKEND
 user backend
 topic read  access/door/+/request/#
+
 topic write access/door/+/decision
+#           ADMIN
+user admin
+topic write access/door/add/request
+topic read  access/door/add/decision
