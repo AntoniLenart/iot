@@ -9,7 +9,6 @@ import os
 import cv2
 import time
 import json
-import base64
 from datetime import datetime
 from pyzbar import pyzbar
 from picamera2 import Picamera2
