@@ -232,7 +232,7 @@ class FingerprintModule:
         return bytes(out)
     
     # ------------------------
-    # Utility: Convertion tools (JSON, bin)
+    # Utility: Conversion tools (JSON, bin)
     # ------------------------
 
     def eigen_to_json(self, eigen_bytes: bytes, filename: str = None) -> dict:
@@ -394,12 +394,11 @@ if __name__ == "__main__":
         elif args.cmd == "save_eigen":
             print("Place finger for eigenvalue capture...")
             data = fp.upload_eigenvalues()
-            bin_path=f"{args.path}.bin"
+            bin_path = f"{args.path}.bin"
             with open(bin_path, "wb") as f:
                 f.write(data)
             print(f"Eigenvalue saved to {args.path}.bin")
             json_path = f"{args.path}.json"
-            print(json_path)
             fp.eigen_to_json(data,json_path)
             print(f"Eigenvalue saved to {args.path}.json")
         else:

@@ -1,6 +1,6 @@
 # Moduł odcisków palców UART na Raspberry Pi
 
-Prosty sterownik CLI dla modulu napisany w Pythonie; przewodnik konfiguracji 
+Prosty sterownik CLI dla modułu napisany w Pythonie; przewodnik konfiguracji 
 
 To repozytorium zawiera podstawowa implementację w języku Python oraz narzędzie wiersza poleceń do sterowania czujnikiem odcisków palców UART  z komputera Raspberry Pi Zero, 3, 4 lub 5 za pomocą interfejsu szeregowego (UART).
 
@@ -148,7 +148,7 @@ Fingerprint match SUCCESS
 | 0x01 | Odcisk nie pasuje |
 | 0x08 | Nie wykryto palca w czasie oczekiwania (Timeout)|
 
-#### 6.4 Zapisanie wartosci wlasnej do pliku o wybranej nazwie
+#### 6.4 Zapisanie wartości własnej do pliku o wybranej nazwie
 
 Tworzy jednocześnie pliki `.bin` i `.json` z aktualnie zeskanowanego odcisku palca.
 
