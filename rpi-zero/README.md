@@ -171,10 +171,8 @@ W folderze pojawią się dwa pliki:
 Przykładowa zawartość palec.json:
 ```json
 {
-  "format": "fingerprint_eigenvalue_v1",
-  "length": 193,
-  "encoding": "base64",
-  "eigen_b64": "AAQeCyDz83ovF0...=="
+  "format": "fingerprint",
+  "data": "AAQeCyDz83ovF0...=="
 }
 ```
 

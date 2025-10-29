@@ -247,10 +247,8 @@ class FingerprintModule:
             dict: JSON-ready dictionary representation of the eigenvalue
         """
         data = {
-            "format": "fingerprint_eigenvalue_v1",
-            "length": len(eigen_bytes),
-            "encoding": "base64",
-            "eigen_b64": base64.b64encode(eigen_bytes).decode("ascii"),
+            "format": "fingerprint",
+            "data": base64.b64encode(eigen_bytes).decode("ascii"),
         }
 
         if filename:
@@ -281,10 +279,10 @@ class FingerprintModule:
         else:
             obj = json_data
 
-        if obj.get("format") != "fingerprint_eigenvalue_v1":
+        if obj.get("format") != "fingerprint":
             raise ValueError("Invalid or missing format tag in JSON data")
 
-        eigen_bytes = base64.b64decode(obj["eigen_b64"])
+        eigen_bytes = base64.b64decode(obj["data"])
 
         if bin_filename:
             with open(bin_filename, "wb") as f:
@@ -366,7 +364,7 @@ if __name__ == "__main__":
                         data = json.load(f)
                     if data.get("format") != "fingerprint_eigenvalue_v1":
                         raise ValueError("Invalid JSON eigenvalue format.")
-                    eigen = base64.b64decode(data["eigen_b64"])
+                    eigen = base64.b64decode(data["data"])
                 else:
                     print(f"Loading eigenvalue from binary file: {eigen_path}")
                     with open(eigen_path, "rb") as f:
