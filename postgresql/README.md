@@ -8,7 +8,7 @@
    - 3.1 `users`
    - 3.2 `devices`
    - 3.3 `buildings`, `rooms`, `doors`, `desks`
-   - 3.4 `access_groups`, `user_access_groups`, `access_policies`, `group_policies`
+   - 3.4 `user_groups`, `user_access_groups`, `access_policies`, `group_policies`, `credential_policies`
    - 3.5 `credentials`, `biometric_templates`, `rfid_cards`, `qr_codes`
    - 3.6 `reservations`
    - 3.7 `access_logs`, `events`, `emergencies`, `admin_audit`
@@ -18,13 +18,13 @@
 
 Schemat: `access_mgmt`  
 Rozszerzenia użyte w bazie:
-- `citext` - tekst bez rozróżniania wielkości liter,  
-- `pgcrypto` - generowanie UUID i możliwość szyfrowania.
+- `citext` - tekst bez rozróżniania wielkości liter  
+- `pgcrypto` - generowanie UUID i pomocnicze funkcje kryptograficzne
 
-Każda tabela zawiera:
-- identyfikator w formacie `uuid`,  
-- kolumny `created_at`, `updated_at` (tam, gdzie logiczne),  
-- opcjonalną kolumnę `metadata jsonb` - do przechowywania elastycznych danych.
+Zasady projektowe:
+- Każda główna encja ma `uuid` jako identyfikator.
+- Wiele tabel zawiera `metadata jsonb` dla elastycznych atrybutów.
+- Polityki dostępu są zdefiniowane niezależnie i mogą być przypisane do grup użytkowników lub bezpośrednio do credentiali zewnętrznych.
 
 ## 2️⃣ Typy enumeracyjne
 
@@ -157,6 +157,18 @@ Grupy logiczne (np. „pracownicy IT”, „goście”, „utrzymanie”).
 **`group_policies`**  
 Łączy polityki (`access_policies`) z grupami.  
 
+Dodatkowo:
+- `credential_policies` — przypisanie polityk bezpośrednio do credentiali (przeznaczone dla credentiali zewnętrznych, tzn. bez `user_id`).
+  - Główne kolumny:
+    - `credential_id` (FK → credentials.credential_id)
+    - `policy_id` (FK → access_policies.policy_id)
+    - `assigned_by` (kto przypisał, opcjonalny FK → users)
+    - `assigned_at` (timestamp)
+    - `valid_from`, `valid_until` (okres ważności przypisania)
+    - `is_active` (czy przypisanie jest aktywne)
+    - `metadata` (jsonb)
+  - Zachowanie: trigger `validate_credential_policy_external` blokuje wstawienia/aktualizacje przypisań, jeśli powiązany credential ma `user_id` (czyli nie jest credentialem zewnętrznym).
+
 ---
 
 ### 3.5 🔑 Poświadczenia i biometria
@@ -167,6 +179,13 @@ Grupy logiczne (np. „pracownicy IT”, „goście”, „utrzymanie”).
 | `biometric_templates` | Zaszyfrowane wzorce biometryczne |
 | `rfid_cards` | Karty RFID (z historią emisji) |
 | `qr_codes` | Kody QR (tymczasowe dostępy) |
+
+Uwaga:
+- `qr_codes` nie posiada bezpośredniego `user_id` — kody mogą być wystawiane dla osób zewnętrznych (informacje kontaktowe przechowywane w `recipient_info`) lub powiązane z credentialem w systemie.
+- `usage_count` przechowuje liczbę użyć kodu; aktualizacja `usage_count` oraz egzekwowanie limitów (inkrementacja po każdym użyciu) leży po stronie aplikacji/serwisu integrującego czytnik. Trigger `set_credential_inactive_on_qr_invalid` reaguje na zmiany rekordu QR (INSERT/UPDATE) i dezaktywuje powiązany credential gdy kod:
+  - jest oznaczony jako nieaktywny (`is_active = false`),
+  - ma `valid_until <= now()`,
+  - lub `usage_count >= usage_limit`.
 
 ---
 

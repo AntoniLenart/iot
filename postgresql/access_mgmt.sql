@@ -70,7 +70,7 @@ CREATE INDEX IF NOT EXISTS ix_devices_type ON devices (device_type);
 CREATE INDEX IF NOT EXISTS ix_devices_location ON devices (location);
 CREATE INDEX IF NOT EXISTS ix_devices_metadata_gin ON devices USING gin (metadata);
 
--- TABLES: buildings/rooms/doors/desks
+-- TABLE: buildings (budynki)
 CREATE TABLE IF NOT EXISTS buildings (
   building_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS buildings (
   metadata jsonb DEFAULT '{}'
 );
 
+-- TABLE: rooms (pokoje)
 CREATE TABLE IF NOT EXISTS rooms (
   room_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   building_id uuid REFERENCES buildings(building_id) ON DELETE SET NULL,
@@ -87,6 +88,7 @@ CREATE TABLE IF NOT EXISTS rooms (
   metadata jsonb DEFAULT '{}'
 );
 
+-- TABLE: doors (drzwi)
 CREATE TABLE IF NOT EXISTS doors (
   door_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   room_id uuid REFERENCES rooms(room_id) ON DELETE CASCADE,
@@ -97,6 +99,7 @@ CREATE TABLE IF NOT EXISTS doors (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- TABLE: desks (biurka/stanowiska)
 CREATE TABLE IF NOT EXISTS desks (
   desk_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   room_id uuid REFERENCES rooms(room_id) ON DELETE CASCADE,
@@ -108,20 +111,20 @@ CREATE TABLE IF NOT EXISTS desks (
 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_desks_code ON desks (code);
 
--- TABLE: access_groups (grupy dostępu)
-CREATE TABLE IF NOT EXISTS access_groups (
+-- TABLE: user_groups (grupy użytkowników)
+CREATE TABLE IF NOT EXISTS user_groups (
   group_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
   description text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS ux_access_groups_name ON access_groups (lower(name));
+CREATE UNIQUE INDEX IF NOT EXISTS ux_user_groups_name ON user_groups (lower(name));
 
 -- TABLE JOIN: users <-> access_groups (przynależność do grup)
 CREATE TABLE IF NOT EXISTS user_access_groups (
   user_id uuid REFERENCES users(user_id) ON DELETE CASCADE,
-  group_id uuid REFERENCES access_groups(group_id) ON DELETE CASCADE,
+  group_id uuid REFERENCES user_groups(group_id) ON DELETE CASCADE,
   assigned_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
   assigned_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY(user_id, group_id)
@@ -138,8 +141,7 @@ CREATE TABLE IF NOT EXISTS access_policies (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
--- TABLES: policy_rooms, policy_doors, policy_days, policy_time_ranges
--- Definicja szczegółowych reguł dostępu w ramach polityki
+-- TABLE: policy_rooms (pokoje w politykach dostępu)
 CREATE TABLE IF NOT EXISTS policy_rooms (
   policy_room_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   policy_id uuid REFERENCES access_policies(policy_id) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -149,6 +151,7 @@ CREATE TABLE IF NOT EXISTS policy_rooms (
   metadata jsonb DEFAULT '{}'
 );
 
+-- TABLE: policy_doors (drzwi w politykach dostępu)
 CREATE TABLE IF NOT EXISTS policy_doors (
   policy_door_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   policy_room_id uuid REFERENCES policy_rooms(policy_room_id) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -157,6 +160,7 @@ CREATE TABLE IF NOT EXISTS policy_doors (
   metadata jsonb DEFAULT '{}'
 );
 
+-- TABLE: policy_days (dni w politykach dostępu)
 CREATE TABLE IF NOT EXISTS policy_days (
   policy_day_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   policy_door_id uuid REFERENCES policy_doors(policy_door_id) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -164,6 +168,7 @@ CREATE TABLE IF NOT EXISTS policy_days (
   is_active boolean NOT NULL DEFAULT true
 );
 
+-- TABLE: policy_time_ranges (zakresy czasowe w politykach dostępu)
 CREATE TABLE IF NOT EXISTS policy_time_ranges (
   time_range_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   policy_day_id uuid REFERENCES policy_days(policy_day_id) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -176,25 +181,27 @@ CREATE TABLE IF NOT EXISTS policy_time_ranges (
 CREATE INDEX IF NOT EXISTS ix_access_policies_name ON access_policies (lower(name));
 CREATE INDEX IF NOT EXISTS ix_access_policies_active ON access_policies (is_active);
 
--- TABLE LINK: access_group -> access_policy (które polityki przypisane są grupom)
+-- TABLE LINK: group_policies (powiązanie grup -> polityki)
 CREATE TABLE IF NOT EXISTS group_policies (
-  group_id uuid REFERENCES access_groups(group_id) ON DELETE CASCADE,
+  group_id uuid REFERENCES user_groups(group_id) ON DELETE CASCADE,
   policy_id uuid REFERENCES access_policies(policy_id) ON DELETE CASCADE,
   PRIMARY KEY(group_id, policy_id),
   assigned_at timestamptz NOT NULL DEFAULT now()
 );
 
--- TABLE: credentials (karty RFID, fingerprint templates)
+-- TABLE: credentials (karty RFID, szablony biometryczne, tokeny)
 CREATE TABLE IF NOT EXISTS credentials (
   credential_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid REFERENCES users(user_id) ON DELETE CASCADE,
   credential_type credential_type NOT NULL,
-  identifier text NOT NULL,                -- np. UID karty, fingerprint id
+  identifier text,                -- np. UID karty, fingerprint id (może być NULL dla credentiali opartych na tokenie)
   issued_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
   issued_at timestamptz NOT NULL DEFAULT now(),
   expires_at timestamptz,
   is_active boolean NOT NULL DEFAULT true,
-  metadata jsonb DEFAULT '{}',             -- np. issuer, device that enrolled it
+  metadata jsonb DEFAULT '{}',             -- np. issuer, urządzenie które zarejestrowało credential
+  token_value text,
+  credential_data jsonb DEFAULT '{}',      -- elastyczne dodatkowe atrybuty credentiala
   UNIQUE (credential_type, identifier)
 );
 
@@ -232,22 +239,46 @@ CREATE TABLE IF NOT EXISTS rfid_cards (
 -- TABLE: qr_codes (kody tymczasowe, np. dla gości)
 CREATE TABLE IF NOT EXISTS qr_codes (
   qr_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  code text NOT NULL UNIQUE,               -- wygenerowany kod (base64/hex)
-  user_id uuid REFERENCES users(user_id) ON DELETE CASCADE, -- kto otrzymał kod (może być guest)
-  associated_room_id uuid REFERENCES rooms(room_id) ON DELETE SET NULL,
-  associated_door_id uuid REFERENCES doors(door_id) ON DELETE SET NULL,
-  created_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
+  code text NOT NULL UNIQUE,
+  credential_id uuid REFERENCES credentials(credential_id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   valid_from timestamptz NOT NULL DEFAULT now(),
-  CHECK (valid_until > valid_from),
   valid_until timestamptz NOT NULL,
+  CHECK (valid_until > valid_from),
   usage_limit int NOT NULL DEFAULT 1,
   usage_count int NOT NULL DEFAULT 0,
   is_active boolean NOT NULL DEFAULT true,
+  recipient_info text,                     -- informacje o odbiorcy dla gości zewnętrznych (email/telefon/imię)
   metadata jsonb DEFAULT '{}'
 );
 
 CREATE INDEX IF NOT EXISTS ix_qr_validity ON qr_codes (valid_from, valid_until) WHERE is_active;
+
+-- TRIGGER FUNCTION: gdy kod QR staje się nieaktywny, dezaktywuj powiązany credential
+CREATE OR REPLACE FUNCTION set_credential_inactive_on_qr_invalid()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- działa tylko, gdy jest powiązany credential
+  IF NEW IS NOT NULL AND NEW.credential_id IS NOT NULL THEN
+    -- jeśli kod QR staje się nieaktywny z powodu ręcznej dezaktywacji, wygaśnięcia lub przekroczenia limitu użycia - deaktywuj credential
+    IF (NEW.is_active = false)
+       OR (NEW.valid_until IS NOT NULL AND NEW.valid_until <= now())
+       OR (NEW.usage_limit IS NOT NULL AND NEW.usage_count >= NEW.usage_limit) THEN
+      UPDATE credentials
+      SET is_active = false
+      WHERE credential_id = NEW.credential_id
+        AND is_active = true;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_qr_codes_invalidate_credential ON qr_codes;
+CREATE TRIGGER trg_qr_codes_invalidate_credential
+AFTER INSERT OR UPDATE ON qr_codes
+FOR EACH ROW
+EXECUTE FUNCTION set_credential_inactive_on_qr_invalid();
 
 -- TABLE: reservations (rezerwacja stanowisk/biurek)
 CREATE TABLE IF NOT EXISTS reservations (
@@ -418,5 +449,42 @@ BEGIN
   WHERE user_id = p_user_id;
 END;
 $$ LANGUAGE plpgsql;
+
+-- TABLE LINK: credential_policies (przypisanie credential -> polityka dostępu dla credentiali zewnętrznych)
+CREATE TABLE IF NOT EXISTS credential_policies (
+  credential_id uuid REFERENCES credentials(credential_id) ON DELETE CASCADE,
+  policy_id uuid REFERENCES access_policies(policy_id) ON DELETE CASCADE,
+  assigned_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
+  assigned_at timestamptz NOT NULL DEFAULT now(),
+  valid_from timestamptz DEFAULT now(),
+  valid_until timestamptz,
+  is_active boolean NOT NULL DEFAULT true,
+  metadata jsonb DEFAULT '{}',
+  PRIMARY KEY(credential_id, policy_id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_credential_policies_credential ON credential_policies (credential_id);
+CREATE INDEX IF NOT EXISTS ix_credential_policies_policy ON credential_policies (policy_id);
+CREATE INDEX IF NOT EXISTS ix_credential_policies_validity ON credential_policies (valid_from, valid_until) WHERE is_active;
+
+-- TRIGGER: walidacja credential_policies (tylko credential bez user_id)
+CREATE OR REPLACE FUNCTION validate_credential_policy_external()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_user_id uuid;
+BEGIN
+  SELECT user_id INTO v_user_id FROM credentials WHERE credential_id = NEW.credential_id;
+  IF v_user_id IS NOT NULL THEN
+    RAISE EXCEPTION 'Credential % is linked to internal user %; credential_policies are allowed only for external (no-user) credentials', NEW.credential_id, v_user_id;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_validate_credential_policy_external ON credential_policies;
+CREATE TRIGGER trg_validate_credential_policy_external
+BEFORE INSERT OR UPDATE ON credential_policies
+FOR EACH ROW
+EXECUTE FUNCTION validate_credential_policy_external();
 
 -- End
