@@ -171,9 +171,122 @@ W folderze pojawią się dwa pliki:
 Przykładowa zawartość palec.json:
 ```json
 {
-  "format": "fingerprint_eigenvalue_v1",
-  "length": 193,
-  "encoding": "base64",
-  "eigen_b64": "AAQeCyDz83ovF0...=="
+  "format": "fingerprint",
+  "data": "AAQeCyDz83ovF0...=="
+}
+```
+
+
+# Moduł kamery Raspberry Pi V2 – odczyt kodów QR
+
+Prosty sterownik CLI w Pythonie do automatycznego wykrywania i analizy kodów QR za pomocą modułu kamery Raspberry Pi (v1/v2/v3).
+Zaprojektowany do pracy na Raspberry Pi Zero, 3, 4 lub 5.
+
+## 1. Wymagania sprzętowe
+
+- Raspberry Pi Zero / Zero W / Zero 2 W / 3 / 4 / 5
+- Moduł kamery Raspberry Pi Camera v2
+- Taśma FFC dedykowana dla Pi Zero (mniejszy konektor)
+
+## 2. Schemat połączeń elektrycznych
+
+Podłączenie kamery do Raspberry Pi Zero wymaga odpowiedniego kierunku taśmy i właściwego portu CSI
+
+Kamera V2 korzysta z mniejszego złącza CSI na Raspberry Pi Zero. Dlatego potrzebujemy adaptera FFC do wersji Zero.
+
+## 3. Sprawdź interfejs kamery
+Po zamontowaniu kamery i uruchomieniu sprawdź, czy kamera jest wykrywana:
+```bash
+sudo apt install libcamera-apps
+rpicam-hello --list-cameras
+```
+Powinniśmy zobaczyć komunikat:
+```bash
+Available cameras
+-----------------
+0 : imx219 [3280x2464 10-bit RGGB] (/base/soc/i2c0mux/i2c@1/imx219@10)
+    Modes: 'SRGGB10_CSI2P' : 640x480 [103.33 fps - (1000, 752)/1280x960 crop]
+                             1640x1232 [41.85 fps - (0, 0)/3280x2464 crop]
+                             1920x1080 [47.57 fps - (680, 692)/1920x1080 crop]
+                             3280x2464 [21.19 fps - (0, 0)/3280x2464 crop]
+           'SRGGB8' : 640x480 [103.33 fps - (1000, 752)/1280x960 crop]
+                      1640x1232 [41.85 fps - (0, 0)/3280x2464 crop]
+                      1920x1080 [47.57 fps - (680, 692)/1920x1080 crop]
+                      3280x2464 [21.19 fps - (0, 0)/3280x2464 crop]
+
+```
+
+## 4. Instalacja oprogramowania
+
+Zainstaluj zależności wymagane do obsługi kamery i analizy kodów QR:
+```bash
+sudo apt update
+sudo apt install python3-pip python3-opencv python3-pyzbar python3-libcamera libzbar0 python3-picamera2 python3-numpy -y
+```
+Następnie skopiuj lub sklonuj repozytorium z plikiem `camera_module.py` na swój Raspberry Pi.
+
+## 5. Uruchomienie CLI
+
+Skrypt `camera_module.py` zawiera prosty interfejs wiersza poleceń (CLI).
+Możesz go uruchomić bezpośrednio w terminalu.
+
+Wyświetlenie pomocy:
+```bash
+python3 camera_module.py
+```
+
+Output:
+```bash
+[INFO] Camera ready for live scanning.
+
+Raspberry Pi QR Scanner CLI Utility
+-----------------------------------
+Scan and save QR codes using the Pi Camera.
+
+Usage:
+<command> [options]
+
+Commands:
+  live             Start live QR scanning (stops after first detection if without options)
+  help             Show this help message
+  exit             Quit the application
+
+Options:
+  --save_dir DIR   Directory to save QR images and JSON (default: qr_output)
+  --preview        Show live video feed during scanning
+  --timeout N      Stop live scan after N seconds (default: 0 = unlimited)
+
+
+Enter command: 
+```
+
+# 6. Typowe polecenia
+
+### 6.1 Tryb skanowania na żywo
+
+Otwiera strumień z kamery i analizuje każdą klatkę.
+Zatrzymuje się po wykryciu kodu QR lub po naciśnięciu `q`.
+```bash
+Enter command: live
+```
+
+Output:
+```bash
+[INFO] Starting live QR scan...
+[INFO] QR detected: https://allegro.pl
+[INFO] Saved image: qr_output/qr_20251029_102413.jpg
+[INFO] Saved JSON:  qr_output/qr_20251029_102413.json
+[INFO] QR code saved.
+
+```
+
+## 7. Struktura zapisu danych
+
+Każdy wykryty kod QR jest zapisywany w pliku wybranym katalogu w następującym formacie:
+
+```json
+{
+  "format": "qr",
+  "data": "https://allegro.pl"
 }
 ```
