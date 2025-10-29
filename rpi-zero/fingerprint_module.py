@@ -362,7 +362,7 @@ if __name__ == "__main__":
                     print(f"Loading eigenvalue from JSON file: {eigen_path}")
                     with open(eigen_path, "r") as f:
                         data = json.load(f)
-                    if data.get("format") != "fingerprint_eigenvalue_v1":
+                    if data.get("format") != "fingerprint":
                         raise ValueError("Invalid JSON eigenvalue format.")
                     eigen = base64.b64decode(data["data"])
                 else:
