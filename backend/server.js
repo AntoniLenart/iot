@@ -15,6 +15,77 @@ app.get('/', (req, res) => {
 })
 
 /**
+ * Wysyła email z kodem QR osadzonym jako obrazek inline.
+ *
+ * @async
+ * @function sendEmailWithQR
+ * @param {string} toEmail - Adres email odbiorcy.
+ * @param {Buffer} qrBuffer - Bufor PNG zawierający obrazek kodu QR.
+ *
+ * @throws {Error} Zgłasza błąd, jeśli wysyłka emaila nie powiedzie się. Błąd jest logowany w konsoli.
+ *
+ * @example
+ * import QRCode from 'qrcode';
+ *
+ * // Generowanie bufora QR code
+ * const qrBuffer = await QRCode.toBuffer(JSON.stringify({ token: "abc123" }));
+ *
+ * // Wysyłka QR code mailem
+ * await sendEmailWithQR('odbiorca@example.com', qrBuffer);
+ *
+ * @description
+ * Funkcja wykorzystuje Nodemailer do wysyłki emaila przez SMTP Mailgun.
+ * Kod QR jest wysyłany jako obrazek inline z użyciem identyfikatora Content-ID (`cid`),
+ * dzięki czemu obrazek jest wyświetlany bezpośrednio w treści emaila
+
+ * Transporter SMTP tworzony jest na podstawie zmiennych środowiskowych:
+ * - MAILGUN_HOST
+ * - MAILGUN_PORT
+ * - MAILGUN_USER
+ * - MAILGUN_PASS
+ *
+ * Email jest wysyłany z adresu `"QR Bot" <no-reply@sandbox...mailgun.org>`.
+ * Wszelkie błędy podczas wysyłki są przechwytywane i logowane w konsoli.
+ */
+async function sendEmailWithQR(toEmail, qrBuffer) {
+   try {
+        const transporter = nodemailer.createTransport({
+                host: process.env.MAILGUN_HOST,
+                port: process.env.MAILGUN_PORT,
+                secure: false,
+                auth: {
+                user: process.env.MAILGUN_USER,
+                pass: process.env.MAILGUN_PASS,
+                },
+        })
+
+        const mailOptions = {
+                from: `"QR Bot" <no-reply@sandbox38b51b040f5245269855e3a71b96e05f.mailgun.org>`,
+                to: toEmail,
+                subject: 'Your generated QR code',
+                html: `
+                <h2>Hello!</h2>
+                <p>Here’s your QR access code</p>
+                <img src="cid:qrcode_cid" alt="QR Code" />
+                `,
+
+                attachments: [
+                {
+                        filename: 'qrcode.png',
+                        content: qrBuffer,
+                        cid: 'qrcode_cid', // this must match the img src
+                },
+                ],
+        }
+
+        const info = await transporter.sendMail(mailOptions)
+         console.log('✅ Email sent successfully:', info.response)
+   } catch (error) {
+        console.error('❌ Failed to send email:', error)
+   }
+}
+
+/**
  * POST /access-check
  * Endpoint służący do odbierania danych w formacie JSON od klienta.
  *
@@ -79,7 +150,15 @@ app.post('/qrcode_generation', async (req, res) => {
     console.log(qrTerminal);
 
     const qrDataUrl = await QRCode.toDataURL(stringData)
+    const qrBuffer = await QRCode.toBuffer(stringData);
+
     res.json({ token, qrCode: qrDataUrl })
+
+    /* Wysylanie maila z wygenerowanym wczesniej kodem QR */
+    if(req.body.email){
+        await sendEmailWithQR(req.body.email, qrBuffer)
+    }
+
 
   } catch (err) {
     console.error(err)
