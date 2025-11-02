@@ -3,6 +3,9 @@ import QRCode from 'qrcode'
 import psql from 'pg'
 import nodemailer from 'nodemailer'
 import crypto from 'crypto'
+import dotenv from 'dotenv'
+
+dotenv.config()
 
 const { Client } = psql
 const app = express()
