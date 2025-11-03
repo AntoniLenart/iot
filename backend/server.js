@@ -1,12 +1,10 @@
 import 'dotenv/config'
 import express from 'express'
 import QRCode from 'qrcode'
-import psql from 'pg'
 import nodemailer from 'nodemailer'
 import crypto from 'crypto'
 import databaseRoutes from './database.js';
 
-const { Client } = psql
 const app = express()
 const PORT = 4000
 
