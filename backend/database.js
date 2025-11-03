@@ -171,12 +171,12 @@ router.get('/credentials/list', async (req, res) => {
 });
 
 router.post('/credentials/create', ensureJson, async (req, res) => {
-    const { user_id, credential_type, identifier, issued_by, expires_at, is_active, metadata } = req.body;
-    if (!credential_type || !identifier) return res.status(400).json({ error: 'credential_type and identifier are required' });
+    const { user_id, credential_type, identifier = null, token_value = null, credential_data = null, issued_by, expires_at, is_active, metadata } = req.body;
+    if (!credential_type) return res.status(400).json({ error: 'credential_type is required' });
     try {
-        const insert = `INSERT INTO access_mgmt.credentials (user_id, credential_type, identifier, issued_by, expires_at, is_active, metadata)
-                        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`;
-        const values = [user_id || null, credential_type, identifier, issued_by || null, expires_at || null, is_active !== undefined ? is_active : true, metadata || {}];
+        const insert = `INSERT INTO access_mgmt.credentials (user_id, credential_type, identifier, issued_by, issued_at, expires_at, is_active, metadata, token_value, credential_data)
+                        VALUES ($1,$2,$3,$4,COALESCE($5, now()),$6,$7,$8,$9,$10) RETURNING *`;
+        const values = [user_id || null, credential_type, identifier, issued_by || null, null, expires_at || null, is_active !== undefined ? is_active : true, metadata || {}, token_value || null, credential_data || null];
         const result = await pool.query(insert, values);
         res.status(201).json({ credential: result.rows[0] });
     } catch (err) {
@@ -233,17 +233,43 @@ router.get('/qr/list', async (req, res) => {
 });
 
 router.post('/qr/create', ensureJson, async (req, res) => {
-    const { code, credential_id, user_id, associated_room_id, associated_door_id, created_by, valid_from, valid_until, usage_limit, metadata } = req.body;
+    const { code, credential_id, valid_from, valid_until, usage_limit, recipient_info, metadata } = req.body;
     if (!valid_until) return res.status(400).json({ error: 'valid_until is required' });
+
+    const client = await pool.connect();
     try {
-        const insert = `INSERT INTO access_mgmt.qr_codes (code, credential_id, user_id, associated_room_id, associated_door_id, created_by, created_at, valid_from, valid_until, usage_limit, usage_count, is_active, metadata)
-                        VALUES (COALESCE($1, gen_random_uuid()::text),$2,$3,$4,$5,$6,now(),COALESCE($7,now()),$8,$9,0,true,$10) RETURNING *`;
-        const values = [code || null, credential_id || null, user_id || null, associated_room_id || null, associated_door_id || null, created_by || null, valid_from || null, valid_until, usage_limit || 1, metadata || {}];
-        const result = await pool.query(insert, values);
-        res.status(201).json({ qr: result.rows[0] });
+        await client.query('BEGIN');
+        let credId = credential_id || null;
+        const tokenVal = metadata.token || null;
+        if (!credId) {
+            // create a placeholder credential tied to no user (external token)
+            const credRes = await client.query(
+                `INSERT INTO access_mgmt.credentials (user_id, credential_type, identifier, issued_by, issued_at, expires_at, is_active, token_value)
+                 VALUES ($1,$2,$3,$4,now(),$5,$6,$7) RETURNING credential_id`,
+                [null, 'qr_code', null, null, valid_until, true, tokenVal]
+            );
+            credId = credRes.rows[0].credential_id;
+        } else {
+            // update existing credential token_value and expires_at
+            await client.query(
+                `UPDATE access_mgmt.credentials SET token_value = $1, expires_at = $2 WHERE credential_id = $3`,
+                [tokenVal, valid_until, credId]
+            );
+        }
+
+        const insert = `INSERT INTO access_mgmt.qr_codes (code, credential_id, created_at, valid_from, valid_until, usage_limit, usage_count, is_active, recipient_info)
+                        VALUES (COALESCE($1, gen_random_uuid()::text), $2, now(), COALESCE($3, now()), $4, $5, 0, true, $6) RETURNING *`;
+        const values = [code || null, credId, valid_from || null, valid_until, usage_limit || 1, recipient_info || null];
+        const result = await client.query(insert, values);
+
+        await client.query('COMMIT');
+        res.status(201).json({ qr: result.rows[0], credential_id: credId });
     } catch (err) {
+        await client.query('ROLLBACK');
         console.error('DB error:', err);
         res.status(500).json({ error: 'database error' });
+    } finally {
+        client.release();
     }
 });
 
@@ -263,14 +289,13 @@ router.post('/qr/remove', ensureJson, async (req, res) => {
 router.patch('/qr/update', ensureJson, async (req, res) => {
     const { qr_id, ...fields } = req.body;
     if (!qr_id) return res.status(400).json({ error: 'qr_id is required' });
-    const allowed = ['code','credential_id','user_id','associated_room_id','associated_door_id','valid_from','valid_until','usage_limit','usage_count','is_active','metadata'];
+    const allowed = ['code','credential_id','valid_from','valid_until','usage_limit','usage_count','is_active','recipient_info','metadata'];
     const sets = []; const values = []; let idx = 1;
     for (const key of Object.keys(fields)) {
         if (!allowed.includes(key)) continue;
         sets.push(`${key} = $${idx}`); values.push(fields[key]); idx++;
     }
     if (sets.length === 0) return res.status(400).json({ error: 'no updatable fields provided' });
-    sets.push('');
     const sql = `UPDATE access_mgmt.qr_codes SET ${sets.join(', ')} WHERE qr_id = $${idx} RETURNING *`;
     values.push(qr_id);
     try {
