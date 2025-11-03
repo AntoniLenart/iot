@@ -141,6 +141,8 @@ app.post('/access-check', (req, res) => {
  */
 app.post('/qrcode_generation', async (req, res) => {
   try {
+    if (!req.body.valid_until) return res.status(400).json({ error: 'valid_until is required' });
+
     const inputData = req.body
     const token = crypto.randomBytes(16).toString('hex')
 
@@ -154,16 +156,46 @@ app.post('/qrcode_generation', async (req, res) => {
     const qrDataUrl = await QRCode.toDataURL(stringData)
     const qrBuffer = await QRCode.toBuffer(stringData);
 
-    res.json({ token, qrCode: qrDataUrl })
+    // Zapis do bazy przez istniejący endpoint /api/v1/qr/create
+    const qrPayload = {
+      code: qrDataUrl,
+      credential_id: req.body.credential_id || null,
+      valid_from: req.body.valid_from || null,
+      valid_until: req.body.valid_until,
+      usage_limit: req.body.usage_limit || 1,
+      recipient_info: req.body.recipient_info || req.body.email || null,
+      metadata: Object.assign({}, req.body.metadata || {}, { token })
+    };
+
+    const apiUrl = `http://127.0.0.1:${PORT}/api/v1/qr/create`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    const apiRes = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(qrPayload),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+
+    if (!apiRes.ok) {
+      const txt = await apiRes.text();
+      throw new Error(`qr create failed: ${apiRes.status} ${txt}`);
+    }
+    const apiJson = await apiRes.json();
+    const saved = apiJson.qr;
 
     /* Wysylanie maila z wygenerowanym wczesniej kodem QR */
     if(req.body.email){
         await sendEmailWithQR(req.body.email, qrBuffer)
     }
 
+    res.status(201).json({ token, qrCode: qrDataUrl, qr_record: saved });
 
   } catch (err) {
     console.error(err)
+    if (err.name === 'AbortError') return res.status(504).send('Internal QR create timed out');
     res.status(500).send("Error generating QR code")
   }
 });
