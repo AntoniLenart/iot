@@ -1,11 +1,10 @@
+import 'dotenv/config'
 import express from 'express'
 import QRCode from 'qrcode'
 import psql from 'pg'
 import nodemailer from 'nodemailer'
 import crypto from 'crypto'
-import dotenv from 'dotenv'
-
-dotenv.config()
+import databaseRoutes from './database.js';
 
 const { Client } = psql
 const app = express()
@@ -169,6 +168,8 @@ app.post('/qrcode_generation', async (req, res) => {
   }
 });
 
+app.use('/api/v1', databaseRoutes);
+
 app.listen(PORT, () => {
-    console.log(`Serwer działa na htpp://localhost:${PORT}`)
+    console.log(`Serwer działa na http://localhost:${PORT}`)
 })
