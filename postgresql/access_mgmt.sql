@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS users (
   last_name text NOT NULL,
   email citext,                        -- case-insensitive
   phone text,
+  password_hash text,                  -- hashed password for authentication
   user_type user_type NOT NULL DEFAULT 'employee',
   department text,
   employee_number text,                -- opcjonalne

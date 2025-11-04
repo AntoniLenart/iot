@@ -1,46 +1,39 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export default function Users() {
-  const [users, setUsers] = useState([
-    {
-      id: 1,
-      name: "Jan Kowalski",
-      email: "jan@example.com",
-      rfid: "RFID-1234",
-      biometrics: true,
-      biometricId: "BIO-01",
-      role: "Admin",
-    },
-    {
-      id: 2,
-      name: "Anna Nowak",
-      email: "anna@example.com",
-      rfid: null,
-      biometrics: false,
-      biometricId: null,
-      role: "User",
-    },
-    {
-      id: 3,
-      name: "Piotr Zieliński",
-      email: "piotr@example.com",
-      rfid: "RFID-9876",
-      biometrics: false,
-      biometricId: null,
-      role: "User",
-    },
-  ]);
-
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
 
+  // Fetch users from the database on component mount
+  const fetchUsers = async () => {
+    try {
+      const response = await fetch('http://localhost:4000/api/v1/users/list');
+      if (!response.ok) throw new Error('Failed to fetch users');
+      const data = await response.json();
+      setUsers(data.users || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
 
   // Search filter
   const filteredUsers = users.filter(
     (u) =>
-      u.name.toLowerCase().includes(search.toLowerCase()) ||
-      (u.rfid && u.rfid.toLowerCase().includes(search.toLowerCase()))
+      u.first_name?.toLowerCase().includes(search.toLowerCase()) ||
+      u.last_name?.toLowerCase().includes(search.toLowerCase()) ||
+      u.email?.toLowerCase().includes(search.toLowerCase()) ||
+      u.rfid?.toLowerCase().includes(search.toLowerCase())
   );
 
   // Opening modal
@@ -53,14 +46,53 @@ export default function Users() {
     setShowDeleteConfirm(false);
   };
 
-  // Saves changes
-  const saveUserChanges = () => {
-    setUsers((prev) =>
-      prev.map((u) => (u.id === selectedUser.id ? selectedUser : u))
-    );
-    closeUserModal();
+  // Saves changes with API call
+  const saveUserChanges = async () => {
+    setActionLoading(true);
+    try {
+      const { user_id, ...fields } = selectedUser;
+      const response = await fetch('http://localhost:4000/api/v1/users/update', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id, ...fields }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update user');
+      }
+      await fetchUsers(); // Refresh list
+      closeUserModal();
+    } catch (err) {
+      alert(`Error updating user: ${err.message}`);
+    } finally {
+      setActionLoading(false);
+    }
   };
 
+  // Deletes user (API call)
+  const deleteUser = async (user_id) => {
+    setActionLoading(true);
+    try {
+      const response = await fetch('http://localhost:4000/api/v1/users/remove', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete user');
+      }
+      await fetchUsers(); // Refresh list
+      closeUserModal();
+    } catch (err) {
+      alert(`Error deleting user: ${err.message}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  if (loading) return <div>Loading users...</div>;
+  if (error) return <div>Error: {error}</div>;
 
   return (
     <div className="p-6">
@@ -68,7 +100,7 @@ export default function Users() {
         <h2 className="text-4xl font-semibold">Użytkownicy</h2>
         <input
           type="text"
-          placeholder="🔍 Wyszukaj po imieniu lub RFID"
+          placeholder="🔍 Wyszukaj po imieniu, nazwisku, emailu lub RFID"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full sm:w-72 border rounded-lg p-2 focus:ring-2 focus:ring-blue-500"
@@ -81,22 +113,22 @@ export default function Users() {
           <thead className="bg-gray-100 text-gray-700 text-sm uppercase">
             <tr>
               <th className="p-3">Imię i nazwisko</th>
-              <th className="p-3 hidden md:table-cell">Email</th> {/* hidden on small screens */}
+              <th className="p-3 hidden md:table-cell">Email</th>
               <th className="p-3">RFID</th>
               <th className="p-3">Biometria</th>
-              <th className="p-3 hidden md:table-cell">Rola</th> {/* hidden on small screens */}
+              <th className="p-3 hidden md:table-cell">Rola</th>
             </tr>
           </thead>
           <tbody>
             {filteredUsers.length > 0 ? (
               filteredUsers.map((u) => (
                 <tr
-                  key={u.id}
+                  key={u.user_id}
                   className="border-b hover:bg-blue-50 cursor-pointer transition"
                   onClick={() => openUserModal(u)}
                 >
-                  <td className="p-3">{u.name}</td>
-                  <td className="p-3 hidden md:table-cell">{u.email}</td> {/* hidden on small screens */}
+                  <td className="p-3">{u.first_name} {u.last_name}</td>
+                  <td className="p-3 hidden md:table-cell">{u.email || "Brak"}</td>
                   <td className="p-3">{u.rfid || "Nie przypisano"}</td>
                   <td className="p-3">
                     {u.biometrics ? (
@@ -105,7 +137,7 @@ export default function Users() {
                       <span className="text-red-500 font-semibold">❌</span>
                     )}
                   </td>
-                  <td className="p-3 hidden md:table-cell">{u.role}</td> {/* hidden on small screens */}
+                  <td className="p-3 hidden md:table-cell">{u.user_type || "User"}</td>
                 </tr>
               ))
             ) : (
@@ -121,14 +153,14 @@ export default function Users() {
 
       {/* User modal edit */}
       {selectedUser && (
+        <div
+          className="fixed inset-0 backdrop-blur-md bg-white/20 flex items-center justify-center z-50 transition"
+          onClick={closeUserModal}
+        >
           <div
-            className="fixed inset-0 backdrop-blur-md bg-white/20 flex items-center justify-center z-50 transition"
-            onClick={closeUserModal}
+            className="bg-white p-6 rounded-2xl shadow-xl w-full max-w-lg"
+            onClick={(e) => e.stopPropagation()}
           >
-            <div
-              className="bg-white p-6 rounded-2xl shadow-xl w-full max-w-lg"
-              onClick={(e) => e.stopPropagation()}
-            >
             <h3 className="text-xl font-semibold mb-4 text-center">
               Edytuj dane użytkownika
             </h3>
@@ -140,10 +172,11 @@ export default function Users() {
                 </label>
                 <input
                   type="text"
-                  value={selectedUser.name}
-                  onChange={(e) =>
-                    setSelectedUser({ ...selectedUser, name: e.target.value })
-                  }
+                  value={`${selectedUser.first_name} ${selectedUser.last_name}`}
+                  onChange={(e) => {
+                    const [first, ...last] = e.target.value.split(' ');
+                    setSelectedUser({ ...selectedUser, first_name: first, last_name: last.join(' ') });
+                  }}
                   className="w-full border rounded-lg p-2 text-center"
                 />
               </div>
@@ -154,7 +187,7 @@ export default function Users() {
                 </label>
                 <input
                   type="email"
-                  value={selectedUser.email}
+                  value={selectedUser.email || ""}
                   onChange={(e) =>
                     setSelectedUser({ ...selectedUser, email: e.target.value })
                   }
@@ -197,97 +230,134 @@ export default function Users() {
               <div>
                 <label className="block text-sm text-gray-700 mb-1">Rola</label>
                 <select
-                  value={selectedUser.role}
+                  value={selectedUser.user_type || "employee"}
                   onChange={(e) =>
-                    setSelectedUser({ ...selectedUser, role: e.target.value })
+                    setSelectedUser({ ...selectedUser, user_type: e.target.value })
                   }
                   className="w-full border rounded-lg p-2 text-center"
                 >
-                  <option value="User">User</option>
-                  <option value="Admin">Admin</option>
+                  <option value="employee">Employee</option>
+                  <option value="admin">Admin</option>
+                  <option value="guest">Guest</option>
+                  <option value="service">Service</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">
+                  Zmiana hasła (pozostaw puste, aby nie zmieniać)
+                </label>
+                <input
+                  type="password"
+                  value={selectedUser.newPassword || ""}
+                  onChange={(e) =>
+                    setSelectedUser({ ...selectedUser, newPassword: e.target.value })
+                  }
+                  placeholder="Nowe hasło"
+                  className="w-full border rounded-lg p-2 text-center"
+                />
               </div>
             </div>
 
             <div className="flex items-center mt-6">
-              {/* Lewy przycisk: Usuń użytkownika */}
               <button
                 onClick={() => setShowDeleteConfirm(true)}
-                disabled={selectedUser.role === "Admin"}
+                disabled={selectedUser.user_type === "admin" || actionLoading}
                 className={`px-4 py-2 rounded-lg text-white
-                ${selectedUser.role === "Admin"
+                ${selectedUser.user_type === "admin"
                   ? "bg-gray-400 cursor-not-allowed"
                   : "bg-red-600 hover:bg-red-700"
                 }`}
-                title={selectedUser.role === "Admin" ? "Nie można usunąć administratora" : ""}
+                title={selectedUser.user_type === "admin" ? "Nie można usunąć administratora" : ""}
               >
                 🗑️ Usuń użytkownika
               </button>
-              {/* Prawa strona: Anuluj / Zapisz */}
               <div className="ml-auto space-x-2">
                 <button
                   onClick={closeUserModal}
                   className="px-4 py-2 rounded-lg border"
-                >
-                  Anuluj
-                </button>
-                <button
-                  onClick={saveUserChanges}
-                  className="px-4 py-2 rounded-lg bg-blue-600 text-white"
-                >
-                  Zapisz zmiany
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        
-      )}
-
-              {/* Modal potwierdzenia usunięcia */}
-        {showDeleteConfirm && (
-          <div
-            className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60]"
-            onClick={() => setShowDeleteConfirm(false)}
-          >
-            <div
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h4 className="text-lg font-semibold mb-3 text-center">
-                Potwierdź usunięcie
-              </h4>
-              <p className="text-sm text-gray-700 mb-4 text-center">
-                Czy na pewno chcesz usunąć tego użytkownika? Tego nie można cofnąć.
-              </p>
-
-              <div className="bg-gray-50 border rounded-xl p-3 mb-5 text-sm">
-                <div className="font-semibold">{selectedUser?.name}</div>
-                <div className="text-gray-600">{selectedUser?.email}</div>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="flex-1 px-4 py-2 rounded-lg border"
+                  disabled={actionLoading}
                 >
                   Anuluj
                 </button>
                 <button
                   onClick={() => {
-                    setUsers(prev => prev.filter(u => u.id !== selectedUser.id));
-                    closeUserModal();
+                    const { newPassword, ...userData } = selectedUser;
+                    if (newPassword) userData.password = newPassword;
+                    setSelectedUser(userData);
+                    saveUserChanges();
                   }}
-                  className="flex-1 px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700"
+                  disabled={actionLoading}
+                  className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
                 >
-                  Tak, usuń
+                  {actionLoading ? "Zapisywanie..." : "Zapisz zmiany"}
                 </button>
               </div>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
+      {/* Modal potwierdzenia usunięcia */}
+      {showDeleteConfirm && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60]"
+          onClick={() => setShowDeleteConfirm(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h4 className="text-lg font-semibold mb-3 text-center">
+              Potwierdź usunięcie
+            </h4>
+            <p className="text-sm text-gray-700 mb-4 text-center">
+              Czy na pewno chcesz usunąć tego użytkownika? Tego nie można cofnąć.
+            </p>
+
+            <div className="bg-gray-50 border rounded-xl p-3 mb-5 text-sm">
+              <div className="font-semibold">{selectedUser?.first_name} {selectedUser?.last_name}</div>
+              <div className="text-gray-600">{selectedUser?.email}</div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 px-4 py-2 rounded-lg border"
+                disabled={actionLoading}
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={async () => {
+                  setActionLoading(true);
+                  try {
+                    const response = await fetch('http://localhost:4000/api/v1/users/remove', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ user_id: selectedUser.user_id }),
+                    });
+                    if (!response.ok) {
+                      const errorData = await response.json();
+                      throw new Error(errorData.error || 'Failed to delete user');
+                    }
+                    await fetchUsers(); // Refresh list
+                    closeUserModal();
+                  } catch (err) {
+                    alert(`Error deleting user: ${err.message}`);
+                  } finally {
+                    setActionLoading(false);
+                  }
+                }}
+                disabled={actionLoading}
+                className="flex-1 px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {actionLoading ? "Usuwanie..." : "Tak, usuń"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,15 +1,18 @@
 import 'dotenv/config'
 import express from 'express'
+import cors from 'cors'
 import QRCode from 'qrcode'
 import nodemailer from 'nodemailer'
 import crypto from 'crypto'
-import databaseRoutes from './database.js';
-import { createQR } from './database.js';
+import databaseRoutes, { pool, createQR, hashPassword, verifyPassword } from './database.js';
 
 const app = express()
 const PORT = 4000
 
+app.use(cors());
 app.use(express.json())
+
+// Removed local definitions of hashPassword and verifyPassword
 
 app.get('/', (req, res) => {
     res.send("Serwer Node.js działa\n")
@@ -179,6 +182,60 @@ app.post('/qrcode_generation', async (req, res) => {
     console.error(err)
     res.status(500).send("Error generating QR code")
   }
+});
+
+/**
+ * POST /login
+ * Authenticate user with email and password.
+ */
+app.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    await pool.query('INSERT INTO access_mgmt.admin_audit (action, target_type, details, ip_address) VALUES ($1, $2, $3, $4)', ['login_failed', 'user', { email, reason: 'Missing email or password' }, req.ip]);
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
+
+  try {
+    const result = await pool.query('SELECT * FROM access_mgmt.users WHERE LOWER(email) = LOWER($1)', [email]);
+    if (result.rowCount === 0) {
+      await pool.query('INSERT INTO access_mgmt.admin_audit (action, target_type, details, ip_address) VALUES ($1, $2, $3, $4)', ['login_failed', 'user', { email, reason: 'User not found' }, req.ip]);
+      console.log('Login attempt: User not found for email:', email);
+      return res.status(401).json({ error: 'User not found' });
+    }
+
+    const user = result.rows[0];
+    console.log('Login attempt: User found:', user.email, 'Hash exists:', !!user.password_hash);
+
+    const isValid = await verifyPassword(password, user.password_hash);
+    if (!isValid) {
+      await pool.query('INSERT INTO access_mgmt.admin_audit (action, target_type, details, ip_address) VALUES ($1, $2, $3, $4)', ['login_failed', 'user', { email, reason: 'Invalid password' }, req.ip]);
+      console.log('Login attempt: Password verification failed for user:', user.email);
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+
+    await pool.query('INSERT INTO access_mgmt.admin_audit (admin_user, action, target_type, target_id, details, ip_address) VALUES ($1, $2, $3, $4, $5, $6)', [user.user_id, 'login', 'user', user.user_id, { email }, req.ip]);
+    console.log('Login attempt: Success for user:', user.email);
+    res.json({ user });
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+/**
+ * POST /logout
+ * Log user logout.
+ */
+app.post('/logout', async (req, res) => {
+  const { user_id } = req.body;
+  if (user_id) {
+    try {
+      await pool.query('INSERT INTO access_mgmt.admin_audit (admin_user, action, target_type, target_id, details, ip_address) VALUES ($1, $2, $3, $4, $5, $6)', [user_id, 'logout', 'user', user_id, {}, req.ip]);
+    } catch (err) {
+      console.error('Logout logging error:', err);
+    }
+  }
+  res.json({ ok: true });
 });
 
 app.use('/api/v1', databaseRoutes);

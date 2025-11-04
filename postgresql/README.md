@@ -53,6 +53,7 @@ Przechowuje dane wszystkich użytkowników systemu: pracowników, gości, serwis
 | `first_name`, `last_name` | `text` | Imię i nazwisko |
 | `email` | `citext` | Adres e-mail (unikalny) |
 | `phone` | `text` | Numer telefonu |
+| `password_hash` | `text` | Hash hasła |
 | `user_type` | `user_type` | Rola użytkownika |
 | `department` | `text` | Dział lub jednostka |
 | `employee_number` | `text` | Numer pracownika (opcjonalny) |

@@ -1,6 +1,7 @@
 import express from 'express';
 import pkg from 'pg';
 const { Pool } = pkg;
+import crypto from 'crypto';
 
 const router = express.Router();
 
@@ -17,6 +18,27 @@ function ensureJson(req, res, next) {
     next();
 }
 
+// Utility functions for password hashing
+const hashPassword = (password) => {
+  return new Promise((resolve, reject) => {
+    const salt = crypto.randomBytes(16).toBuffer('hex');
+    crypto.scrypt(password, salt, 64, (err, derivedKey) => {
+      if (err) reject(err);
+      resolve(salt + ':' + derivedKey.toString('hex'));
+    });
+  });
+};
+
+const verifyPassword = (password, hash) => {
+  return new Promise((resolve, reject) => {
+    const [salt, key] = hash.split(':');
+    crypto.scrypt(password, salt, 64, (err, derivedKey) => {
+      if (err) reject(err);
+      resolve(key === derivedKey.toString('hex'));
+    });
+  });
+};
+
 // ---- USERS ----
 router.get('/users/list', async (req, res) => {
     try {
@@ -29,19 +51,20 @@ router.get('/users/list', async (req, res) => {
 });
 
 router.post('/users/create', ensureJson, async (req, res) => {
-    const { first_name, last_name, email, phone, user_type = 'employee', department, employee_number } = req.body;
-    if (!first_name || !last_name) {
-        return res.status(400).json({ error: 'first_name and last_name are required' });
+    const { first_name, last_name, email, phone, user_type = 'employee', department, employee_number, password } = req.body;
+    if (!first_name || !last_name || !password) {
+        return res.status(400).json({ error: 'first_name, last_name, and password are required' });
     }
 
     try {
+        const hashedPassword = await hashPassword(password);
         const insertQuery = `
-      INSERT INTO access_mgmt.users (first_name, last_name, email, phone, user_type, department, employee_number)
-      VALUES ($1,$2,$3,$4,$5,$6,$7)
+      INSERT INTO access_mgmt.users (first_name, last_name, email, phone, password_hash, user_type, department, employee_number)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
       RETURNING user_id, first_name, last_name, email, phone, user_type, department, employee_number, created_at;
     `;
         const result = await pool.query(insertQuery, [
-            first_name, last_name, email || null, phone || null,
+            first_name, last_name, email || null, phone || null, hashedPassword,
             user_type, department || null, employee_number || null
         ]);
         res.status(201).json({ user: result.rows[0] });
@@ -66,28 +89,31 @@ router.post('/users/remove', ensureJson, async (req, res) => {
 });
 
 router.patch('/users/update', ensureJson, async (req, res) => {
-    const { user_id, ...fields } = req.body;
+    const { user_id, password, ...fields } = req.body;
     if (!user_id) return res.status(400).json({ error: 'user_id is required' });
 
-    const allowed = ['username','first_name','last_name','email','phone','user_type','department','employee_number','is_active','metadata'];
-    const sets = [];
-    const values = [];
-    let idx = 1;
-    for (const key of Object.keys(fields)) {
-        if (!allowed.includes(key)) continue;
-        sets.push(`${key} = $${idx}`);
-        values.push(fields[key]);
-        idx++;
-    }
-
-    if (sets.length === 0) return res.status(400).json({ error: 'no updatable fields provided' });
-
-    sets.push(`updated_at = now()`);
-
-    const sql = `UPDATE access_mgmt.users SET ${sets.join(', ')} WHERE user_id = $${idx} RETURNING *`;
-    values.push(user_id);
-
     try {
+        if (password) {
+            fields.password_hash = await hashPassword(password);
+        }
+        const allowed = ['username','first_name','last_name','email','phone','user_type','department','employee_number','is_active','metadata','password_hash'];
+        const sets = [];
+        const values = [];
+        let idx = 1;
+        for (const key of Object.keys(fields)) {
+            if (!allowed.includes(key)) continue;
+            sets.push(`${key} = $${idx}`);
+            values.push(fields[key]);
+            idx++;
+        }
+
+        if (sets.length === 0) return res.status(400).json({ error: 'no updatable fields provided' });
+
+        sets.push(`updated_at = now()`);
+
+        const sql = `UPDATE access_mgmt.users SET ${sets.join(', ')} WHERE user_id = $${idx} RETURNING *`;
+        values.push(user_id);
+
         const result = await pool.query(sql, values);
         if (result.rowCount === 0) return res.status(404).json({ error: 'user not found' });
         res.status(200).json({ user: result.rows[0] });
@@ -1678,3 +1704,4 @@ router.patch('/credential_policies/update', ensureJson, async (req, res) => {
 });
 
 export default router;
+export { hashPassword, verifyPassword, pool };

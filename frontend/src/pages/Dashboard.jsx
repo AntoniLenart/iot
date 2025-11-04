@@ -1,10 +1,13 @@
 import FloorPlan from "../components/FloorPlan";
 import { useState, useEffect } from "react";
+import { useAuth } from "../components/AuthContext";
 
 export default function Dashboard() {
   const [hrFree, setHrFree] = useState(true);
   const [mainFree, setMainFree] = useState(true);
   const [svgMarkup, setSvgMarkup] = useState(null);
+  const { user } = useAuth();
+  const isAdmin = user?.user_type === "admin";
 
   useEffect(() => {
   const saved = localStorage.getItem("floor_plan_svg");
@@ -105,15 +108,17 @@ export default function Dashboard() {
           </label>
         </div>
 
-      {/* Sekcja ostatnich logów */}
-      <div className="bg-white p-2 rounded-lg shadow">
-        <h3 className="text-xl font-semibold mb-2">Ostatnie logi</h3>
-        <ul className="list-disc list-inside space-y-2">
-          <li>Użytkownik Jan Kowalski zalogował się o 09:15</li>
-          <li>Admin utworzył nowego użytkownika: Anna Nowak</li>
-          <li>Rezerwacja sali 101 została zatwierdzona na 14:00</li>
-        </ul>
-      </div>
+      {/* Sekcja ostatnich logów - tylko dla administratorów */}
+      {isAdmin && (
+        <div className="bg-white p-2 rounded-lg shadow">
+          <h3 className="text-xl font-semibold mb-2">Ostatnie logi</h3>
+          <ul className="list-disc list-inside space-y-2">
+            <li>Użytkownik Jan Kowalski zalogował się o 09:15</li>
+            <li>Admin utworzył nowego użytkownika: Anna Nowak</li>
+            <li>Rezerwacja sali 101 została zatwierdzona na 14:00</li>
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
