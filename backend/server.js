@@ -4,6 +4,7 @@ import QRCode from 'qrcode'
 import nodemailer from 'nodemailer'
 import crypto from 'crypto'
 import databaseRoutes from './database.js';
+import { createQR } from './database.js';
 
 const app = express()
 const PORT = 4000
@@ -154,7 +155,7 @@ app.post('/qrcode_generation', async (req, res) => {
     const qrDataUrl = await QRCode.toDataURL(stringData)
     const qrBuffer = await QRCode.toBuffer(stringData);
 
-    // Zapis do bazy przez istniejący endpoint /api/v1/qr/create
+    // Zapis do bazy przez bezpośrednie wywołanie funkcji z database.js
     const qrPayload = {
       code: qrDataUrl,
       credential_id: req.body.credential_id || null,
@@ -165,35 +166,17 @@ app.post('/qrcode_generation', async (req, res) => {
       metadata: Object.assign({}, req.body.metadata || {}, { token })
     };
 
-    const apiUrl = `http://127.0.0.1:${PORT}/api/v1/qr/create`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-
-    const apiRes = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(qrPayload),
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
-
-    if (!apiRes.ok) {
-      const txt = await apiRes.text();
-      throw new Error(`qr create failed: ${apiRes.status} ${txt}`);
-    }
-    const apiJson = await apiRes.json();
-    const saved = apiJson.qr;
+    const saved = await createQR(qrPayload);
 
     /* Wysylanie maila z wygenerowanym wczesniej kodem QR */
     if(req.body.email){
         await sendEmailWithQR(req.body.email, qrBuffer)
     }
 
-    res.status(201).json({ token, qrCode: qrDataUrl, qr_record: saved });
+    res.status(201).json({ token, qrCode: qrDataUrl, qr_record: saved.qr });
 
   } catch (err) {
     console.error(err)
-    if (err.name === 'AbortError') return res.status(504).send('Internal QR create timed out');
     res.status(500).send("Error generating QR code")
   }
 });
