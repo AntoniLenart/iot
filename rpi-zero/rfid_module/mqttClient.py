@@ -54,10 +54,13 @@ class MQTTClient:
         for key, value in kwargs.items():
             if key in self.config.keys():
                 self.config[key] = value
+                NON_SENSITIVE_KEYS = ("host", "port", "request_topic", "decision_topic", "qos", "publish_timeout")
                 if key in ("user", "password"):
                     logger.debug(f"MQTT client set config value of key {key} to value [REDACTED]")
-                else:
+                elif key in NON_SENSITIVE_KEYS:
                     logger.debug(f"MQTT client set config value of key {key} to value {value}")
+                else:
+                    logger.debug(f"MQTT client set config value of key {key} to value [REDACTED]")
         self.mqttc = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 
 
