@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
     if secrets:
         if 'MQTT_USER' in secrets and 'MQTT_PASSWORD' in secrets:
-            mqtt = mqttClient.setup(user=secrets['MQTT_USER'], password=secrets['MQTT_PASSWORD'])
+            mqtt.setup(user=secrets['MQTT_USER'], password=secrets['MQTT_PASSWORD'])
         else:
             logger.error(".env file exists but doesn't contain all neccessary entries")
             raise mqttClient.MQTTError("Incorrect .env file contents")
