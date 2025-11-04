@@ -127,6 +127,9 @@ class FingerprintModule:
         Returns:
           cmd (int), [Q1,Q2,Q3?] list (length variable), data (bytes) or None
         """
+        if self.ser.in_waiting < 198:
+            return None, None, None
+
         header = self._read_exact(8)
         if header[0] != 0xF5 or header[-1] != 0xF5:
             raise FingerprintError(f"Invalid response header framing: {header.hex()}")
@@ -163,74 +166,22 @@ class FingerprintModule:
     # ------------------------
     # Data commands (image / eigenvalues)
     # ------------------------
-    def upload_image(self) -> bytes:
-        """
-        CMD 0x24 Acquire and upload images (response > 8 bytes).
-        Manual: image fixed size of 9176 bytes.
-        Returns raw image payload bytes (length should be 9176).
-        """
-        packet = self._build_simple_command(0x24)
-        self._send(packet)
-        cmd, params, data = self._receive_response(expect_data=True)
-        if data is None:
-            raise FingerprintError("No image data received")
-        # Manual: data length fixed 9176
-        return data
 
-    def upload_eigenvalues(self) -> bytes:
+    def new_scan(self):
+        packet = self._build_simple_command(0x23)
+        self._send(packet)
+
+    def get_eigenvalues(self) -> bytes:
         """
         CMD 0x23 Upload acquired images and extracted eigenvalue.
         Manual: eigenvalues data length Len-3 is fixed 193 bytes.
         We'll return raw eigenvalue payload (193 bytes expected).
         """
-        packet = self._build_simple_command(0x23)
-        self._send(packet)
         cmd, params, data = self._receive_response(expect_data=True)
         if data is None:
-            raise FingerprintError("No eigenvalue data received")
+           return None
         return data  # likely starts with 0 0 0 then 193 bytes per manual; handle caller-side.
 
-    def download_eigen_compare(self, eigenbytes: bytes) -> int:
-        """
-        CMD 0x44 Download eigenvalues and acquire fingerprint comparison.
-        This is a data command: header + data (len includes eigenvalue length).
-        Manual: eigenvalue data length Len-3 fixed 193 bytes.
-        Response will be 8-byte ACK in params.
-        """
-        # Build data command with CMD 0x44 and eigenbytes
-        packet = self._build_data_command(0x44, eigenbytes)
-        self._send(packet)
-        _, params, _ = self._receive_response()
-        return params[2]
-
-    # ------------------------
-    # Utility: image unpacking
-    # ------------------------
-    @staticmethod
-    def unpack_image(raw: bytes, width: int = 124, height: int = 148) -> bytes:
-        """
-        The module transmits an image compressed to 124*148 bytes/2 packing: each transmitted byte contains
-        two pixels' high-4-bit values:
-          - lower nibble = previous pixel's high4bits
-          - upper nibble = last pixel's high4bits
-        To reconstruct each pixel's 8-bit gray value: nibble << 4
-
-        Input raw length expected = width*height/2 = 124*148/2 = 9176 (per manual).
-        Returns a bytes object of length width*height where each value is 0-255.
-        """
-        expected_len = (width * height) // 2
-        if len(raw) != expected_len:
-            raise ValueError(f"Unexpected raw image length {len(raw)}, expected {expected_len}")
-        out = bytearray()
-        for b in raw:
-            low_n = b & 0x0F
-            high_n = (b >> 4) & 0x0F
-            pix1 = (low_n << 4) & 0xF0
-            pix2 = (high_n << 4) & 0xF0
-            out.append(pix1)
-            out.append(pix2)
-        return bytes(out)
-    
     # ------------------------
     # Utility: Conversion tools (JSON, bin)
     # ------------------------
@@ -290,118 +241,21 @@ class FingerprintModule:
             print(f"Eigenvalue written to binary file: {bin_filename}")
 
         return eigen_bytes
-
-# ------------------------
-# CLI
-# ------------------------
+    
 if __name__ == "__main__":
-    import argparse, sys, time
-    ap = argparse.ArgumentParser(
-        description=(
-            "Fingerprint Module CLI Utility\n"
-            "--------------------------------\n"
-            "Control your UART fingerprint sensor connected to Raspberry Pi.\n\n"
-            "\n"
-            "Tip: Use --help after any command for details, e.g.\n"
-            "  python3 fingerprint_extended.py enroll --help"
-        ),
-        formatter_class=argparse.RawTextHelpFormatter,
-    )
+    fp = FingerprintModule(port=DEFAULT_PORT, baud=DEFAULT_BAUD, timeout=0)
 
-    ap.add_argument("--port", default=DEFAULT_PORT, help="Serial port (default: /dev/serial0)")
-    ap.add_argument("--baud", default=DEFAULT_BAUD, type=int, help="Baud rate (default: 19200)")
-    ap.add_argument("--timeout", default=10.0, type=float, help="Serial read timeout in seconds")
-
-    sub = ap.add_subparsers(dest="cmd", title="Commands", metavar="<command>")
-
-    # ---------------- Image & Eigen ----------------
-    sub.add_parser("upload_image", help="Capture and save fingerprint image (124x148 packed)")
-    sub.add_parser("upload_eigen", help="Capture and save eigenvalue from current scan")
-
-    cmp_eigen = sub.add_parser("compare_eigen", help="Compare saved eigenvalue (.bin or .json) with live scan")
-    cmp_eigen.add_argument("path", help="Path to eigenvalue file (.bin)")
-
-    save_eigen = sub.add_parser("save_eigen", help="Capture eigenvalue and save to file (JSON and bin)")
-    save_eigen.add_argument("path", help="Path to save eigenvalue file")
-
-    # Show help if no command is given
-    if len(sys.argv) == 1:
-        ap.print_help(sys.stderr)
-        sys.exit(0)
-
-    args = ap.parse_args()
-    # --- Create module object ---
-    fp = FingerprintModule(port=args.port, baud=args.baud, timeout=args.timeout)
-
-    try:
-        if args.cmd == "upload_image":
-            print("Capturing image... place finger on sensor.")
-            data = fp.upload_image()
-            print(f"Image captured: {len(data)} bytes")
-            with open("finger_image.raw", "wb") as f:
-                f.write(data)
-            print("Saved raw image to finger_image.raw")
-
-        elif args.cmd == "upload_eigen":
-            print("Capturing eigenvalue...")
-            data = fp.upload_eigenvalues()
-            print(f"Eigenvalue length: {len(data)} bytes")
-            with open("eigenvalue.bin", "wb") as f:
-                f.write(data)
-            print("Saved eigenvalue to eigenvalue.bin")
-            fp.eigen_to_json(data, filename="eigenvalue.json")
-            print("Saved eigenvalue to eigenvalue.json")
-
-        elif args.cmd == "compare_eigen":
-
-            # --- Load eigenvalue (binary or JSON) ---
-            eigen_path = args.path
-
-            try:
-                if eigen_path.lower().endswith(".json"):
-                    print(f"Loading eigenvalue from JSON file: {eigen_path}")
-                    with open(eigen_path, "r") as f:
-                        data = json.load(f)
-                    if data.get("format") != "fingerprint":
-                        raise ValueError("Invalid JSON eigenvalue format.")
-                    eigen = base64.b64decode(data["data"])
-                else:
-                    print(f"Loading eigenvalue from binary file: {eigen_path}")
-                    with open(eigen_path, "rb") as f:
-                        eigen = f.read()
-            except Exception as e:
-                print("Error reading eigenvalue file:", e)
-                sys.exit(1)
-
-            # --- Run comparison ---
-            print(f"Loaded eigenvalue ({len(eigen)} bytes). Place finger for comparison.")
-            rc = fp.download_eigen_compare(eigen)
-
-            print("Compare result ACK:", rc)
-
-            # --- Interpret ACK codes ---
-            if rc == 0x00:
-                print("Fingerprint match SUCCESS")
-            elif rc == 0x01:
-                print("Fingerprint does not match")
-            elif rc == 0x08:
-                print("No finger detected in time")
-            else:
-                print(f"Unknown ACK code: {rc}")
-
-        elif args.cmd == "save_eigen":
-            print("Place finger for eigenvalue capture...")
-            data = fp.upload_eigenvalues()
-            bin_path = f"{args.path}.bin"
-            with open(bin_path, "wb") as f:
-                f.write(data)
-            print(f"Eigenvalue saved to {args.path}.bin")
-            json_path = f"{args.path}.json"
-            fp.eigen_to_json(data,json_path)
-            print(f"Eigenvalue saved to {args.path}.json")
+    print("Get eigenvalues of your fingerprint")
+    print("Capturing eigenvalues...")
+    fp.new_scan()
+    while True:
+        data = fp.get_eigenvalues()
+        if data is not None:
+            print(f"Eigenvalues length: {len(data)} bytes")
+            print(data)
+            print(f"JSON: \n {fp.eigen_to_json(data)}")
+            break
         else:
-            ap.print_help()
-
-    finally:
-        fp.close()
+            print("Waiting for data from scanner...")
+            time.sleep(1)         
 
