@@ -7,6 +7,12 @@ import dotenv
 
 import json
 
+from fingerprint_module.fingerprintRead import FingerprintModule, DEFAULT_PORT, DEFAULT_BAUD
+import time
+
+from camera_module.qrRead import CameraModule
+from picamera2 import Picamera2
+
 logger = logging.getLogger(__name__)
 
 logging.basicConfig(level=logging.DEBUG)
@@ -45,6 +51,16 @@ if __name__ == "__main__":
     secrets = dotenv.dotenv_values(".env")
 
     rfid = cardRead.RFIDModule()
+    fingerprint = FingerprintModule(port=DEFAULT_PORT, baud=DEFAULT_BAUD, timeout=0)
+    picam = Picamera2()
+    config = picam.create_video_configuration(
+        main={"size": (1200, 1800), "format": "RGB888"}, buffer_count=2,
+        controls={"FrameRate": 5.0}
+    )
+    picam.configure(config)
+    picam.start()
+    scanner = CameraModule(picam)
+
     mqtt = mqttClient.MQTTClient()
 
     if secrets:
@@ -58,8 +74,14 @@ if __name__ == "__main__":
         
     mqtt.connect()
     
+    # First start of modules
+    fingerprint.new_scan()
+    scanner.start_background_scan()
+
     while True:
         r_uid = rfid.readCard()
+        f_uid = fingerprint.get_eigenvalues()
+        s_uid = scanner.qr_event.wait(0.1)
 
         if r_uid:
             json_request = createJSONRequest("rfid", r_uid)
@@ -90,6 +112,27 @@ if __name__ == "__main__":
                         break
                     
                     time.sleep(0.5)
+
+            elif f_uid:
+                json_request = fingerprint.eigen_to_json(f_uid)
+                logger.debug(f"Json request: {json_request}")
+
+                print("rest as above in rfid")
+
+                # Start scanning for new fingerprint eigenvalues
+                fingerprint.new_scan()
+
+            elif s_uid:
+                json_request = scanner.qr_result
+                logger.debug(f"Json request: {json_request}")
+
+                print("rest as above in rfid")
+
+                # Stop thread
+                scanner.stop_scan()
+                # Start scanning for new qr code (reset events and qr_result value in class)
+                scanner.start_background_scan()
+
 
         time.sleep(1)
 
