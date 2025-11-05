@@ -13,31 +13,6 @@ const PORT = 4000
 app.use(cors());
 app.use(express.json())
 
-// Rate limiters
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit each IP to 5 login attempts per windowMs
-  message: 'Too many login attempts from this IP, please try again later.',
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-});
-
-const qrGenerationLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10, // limit each IP to 10 QR generations per windowMs
-  message: 'Too many QR code generation requests from this IP, please try again later.',
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-const accessCheckLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 access checks per windowMs
-  message: 'Too many access check requests from this IP, please try again later.',
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 API requests per windowMs
@@ -139,7 +114,7 @@ async function sendEmailWithQR(toEmail, qrBuffer) {
  * @returns {Object} JSON z wiadomością potwierdzającą odebranie danych oraz przesłanymi danymi
  */
 
-app.post('/access-check', accessCheckLimiter, (req, res) => {
+app.post('/access-check', (req, res) => {
   const receivedData = req.body;
   console.log('Otrzymano POST:', receivedData);
 
@@ -173,7 +148,7 @@ app.post('/access-check', accessCheckLimiter, (req, res) => {
  * @returns {Object} JSON z polami:
  *  - TODO
  */
-app.post('/qrcode_generation', qrGenerationLimiter, async (req, res) => {
+app.post('/qrcode_generation', async (req, res) => {
   try {
     if (!req.body.valid_until) return res.status(400).json({ error: 'valid_until is required' });
 
@@ -221,7 +196,7 @@ app.post('/qrcode_generation', qrGenerationLimiter, async (req, res) => {
  * POST /login
  * Authenticate user with email and password.
  */
-app.post('/login', loginLimiter, async (req, res) => {
+app.post('/login', apiLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     await pool.query('INSERT INTO access_mgmt.admin_audit (action, target_type, details, ip_address) VALUES ($1, $2, $3, $4)', ['login_failed', 'user', { email, reason: 'Missing email or password' }, req.ip]);
