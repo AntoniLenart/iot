@@ -220,7 +220,7 @@ class FingerprintModule:
             dict: JSON-ready dictionary representation of the eigenvalue
         """
         data = {
-            "format": "fingerprint",
+            "type": "fingerprint",
             "data": base64.b64encode(eigen_bytes).decode("ascii"),
         }
 

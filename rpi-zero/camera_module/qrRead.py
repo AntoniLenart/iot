@@ -28,7 +28,7 @@ class CameraModule:
     def qr_to_json(self, qr_text: str) -> dict:
         """Convert raw QR data bytes into a JSON-serializable dict."""
         return {
-            "format": "qr",
+            "type": "qr",
             "data": qr_text,
         }
 
