@@ -14,6 +14,8 @@ import base64
 import json
 from pathlib import Path
 
+import RPi.GPIO as GPIO
+
 # Default serial port for Raspberry Pi
 DEFAULT_PORT = "/dev/serial0"
 DEFAULT_BAUD = 19200
@@ -27,6 +29,9 @@ ACK_NOUSER = 0x05
 ACK_FIN_EXIST = 0x07
 ACK_TIMEOUT = 0x08
 ACK_USER_EXIST = 0x06
+
+# GPIO
+RST_PIN = 18
 
 
 class FingerprintError(Exception):
@@ -168,8 +173,25 @@ class FingerprintModule:
     # ------------------------
 
     def new_scan(self):
+        self.hardware_reset()
         packet = self._build_simple_command(0x23)
         self._send(packet)
+    
+    def stop_scan(self):
+        """Force module to exit scanning by entering sleep mode."""
+        packet = self._build_simple_command(0x2C)
+        self._send(packet)
+        print("Stop (sleep) command sent.")
+
+    def hardware_reset(self):
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(RST_PIN, GPIO.OUT)
+        GPIO.output(RST_PIN, GPIO.LOW)
+        time.sleep(0.05)  # 50 ms low pulse
+        GPIO.output(RST_PIN, GPIO.HIGH)
+        time.sleep(0.2)   # wait for module to boot
+        GPIO.cleanup()
+        print("Fingerprint module reset (woken from sleep).")
 
     def get_eigenvalues(self) -> bytes:
         """
@@ -242,20 +264,25 @@ class FingerprintModule:
 
         return eigen_bytes
     
+    
 if __name__ == "__main__":
     fp = FingerprintModule(port=DEFAULT_PORT, baud=DEFAULT_BAUD, timeout=0)
 
     print("Get eigenvalues of your fingerprint")
     print("Capturing eigenvalues...")
+
     fp.new_scan()
-    while True:
-        data = fp.get_eigenvalues()
-        if data is not None:
-            print(f"Eigenvalues length: {len(data)} bytes")
-            print(data)
-            print(f"JSON: \n {fp.eigen_to_json(data)}")
-            break
-        else:
-            print("Waiting for data from scanner...")
-            time.sleep(1)         
+    try:
+        while True:
+            data = fp.get_eigenvalues()
+            if data is not None:
+                print(f"Eigenvalues length: {len(data)} bytes")
+                print(data)
+                print(f"JSON: \n {fp.eigen_to_json(data)}")
+                break
+            else:
+                print("Waiting for data from scanner...")
+                time.sleep(1)     
+    except KeyboardInterrupt:
+        fp.stop_scan()
 
