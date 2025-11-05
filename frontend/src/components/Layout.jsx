@@ -1,10 +1,18 @@
 import { useState } from "react";
+import { Outlet, Link, useNavigate } from "react-router-dom";
+import { useAuth } from "./AuthContext";
 import Navbar from "./Navbar";
 import Sidebar from "./Sidebar";
-import { Outlet } from "react-router-dom";
 
 export default function Layout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate("/");
+  };
 
   return (
     <div className="flex h-screen overflow-hidden">

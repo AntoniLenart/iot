@@ -15,7 +15,7 @@ git clone <URL_REPOZYTORIUM>
 ```
 2. **Przejdź do katalogu projektu**
 ```bash
-cd iot-frontend
+cd frontend
 ```
 3. **Zainstaluj zależności**
 ```bash

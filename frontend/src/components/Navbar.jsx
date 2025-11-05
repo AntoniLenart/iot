@@ -1,15 +1,17 @@
 import { useState, useEffect, useRef } from "react";
 import { UserCircle, Menu } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "./AuthContext";
 
 export default function Navbar({ toggleSidebar }) {
   const [openMenu, setOpenMenu] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const navigate = useNavigate();
   const menuRef = useRef(null);
+  const { user, logout } = useAuth();
 
-  const handleLogout = () => {
-    localStorage.removeItem("isLoggedIn");
+  const handleLogout = async () => {
+    await logout();
     setOpenMenu(false);
     navigate("/");
   };
@@ -66,7 +68,9 @@ export default function Navbar({ toggleSidebar }) {
           className="flex items-center space-x-2 text-gray-600 font-medium hover:text-gray-800 transition-colors cursor-pointer"
         >
           <UserCircle size={24} />
-          <span>Admin</span>
+          <span>
+            {user ? `${user.first_name} ${user.last_name}` : "User"}
+          </span>{" "}
         </div>
         {/* User menu */}
         {openMenu && (
