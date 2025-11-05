@@ -8,6 +8,7 @@ export default function Users() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState(null);
 
   // Fetch users from the database on component mount
   const fetchUsers = async () => {
@@ -25,6 +26,8 @@ export default function Users() {
 
   useEffect(() => {
     fetchUsers();
+    const user = JSON.parse(localStorage.getItem('user'));
+    if (user) setCurrentUserId(user.user_id);
   }, []);
 
   // Search filter
@@ -47,14 +50,13 @@ export default function Users() {
   };
 
   // Saves changes with API call
-  const saveUserChanges = async () => {
+  const saveUserChanges = async (fields) => {
     setActionLoading(true);
     try {
-      const { user_id, ...fields } = selectedUser;
       const response = await fetch('http://localhost:4000/api/v1/users/update', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id, ...fields }),
+        body: JSON.stringify({ user_id: selectedUser.user_id, ...fields }),
       });
       if (!response.ok) {
         const errorData = await response.json();
@@ -113,7 +115,7 @@ export default function Users() {
           <thead className="bg-gray-100 text-gray-700 text-sm uppercase">
             <tr>
               <th className="p-3">Imię i nazwisko</th>
-              <th className="p-3 hidden md:table-cell">Email</th>
+              <th className="p-3 hidden md:table-cell">Adres e-mail</th>
               <th className="p-3">RFID</th>
               <th className="p-3">Biometria</th>
               <th className="p-3 hidden md:table-cell">Rola</th>
@@ -262,13 +264,8 @@ export default function Users() {
             <div className="flex items-center mt-6">
               <button
                 onClick={() => setShowDeleteConfirm(true)}
-                disabled={selectedUser.user_type === "admin" || actionLoading}
-                className={`px-4 py-2 rounded-lg text-white
-                ${selectedUser.user_type === "admin"
-                  ? "bg-gray-400 cursor-not-allowed"
-                  : "bg-red-600 hover:bg-red-700"
-                }`}
-                title={selectedUser.user_type === "admin" ? "Nie można usunąć administratora" : ""}
+                disabled={selectedUser.user_id === currentUserId || actionLoading}
+                className="px-4 py-2 rounded-lg text-white bg-red-600 hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
                 🗑️ Usuń użytkownika
               </button>
@@ -284,8 +281,7 @@ export default function Users() {
                   onClick={() => {
                     const { newPassword, ...userData } = selectedUser;
                     if (newPassword) userData.password = newPassword;
-                    setSelectedUser(userData);
-                    saveUserChanges();
+                    saveUserChanges(userData);
                   }}
                   disabled={actionLoading}
                   className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
@@ -349,8 +345,8 @@ export default function Users() {
                     setActionLoading(false);
                   }
                 }}
-                disabled={actionLoading}
-                className="flex-1 px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                disabled={selectedUser.user_id === currentUserId || actionLoading}
+                className="flex-1 px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
                 {actionLoading ? "Usuwanie..." : "Tak, usuń"}
               </button>

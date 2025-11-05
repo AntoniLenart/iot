@@ -166,7 +166,8 @@ app.post('/qrcode_generation', async (req, res) => {
       valid_until: req.body.valid_until,
       usage_limit: req.body.usage_limit || 1,
       recipient_info: req.body.recipient_info || req.body.email || null,
-      metadata: Object.assign({}, req.body.metadata || {}, { token })
+      metadata: Object.assign({}, req.body.metadata || {}, { token }),
+      issued_by: req.body.issued_by || null
     };
 
     const saved = await createQR(qrPayload);

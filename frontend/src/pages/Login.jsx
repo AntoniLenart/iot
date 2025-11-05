@@ -24,7 +24,7 @@ export default function Login() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || "Login failed");
+        throw new Error(errorData.error || "Błąd logowania");
       }
 
       const data = await response.json();
@@ -41,7 +41,7 @@ export default function Login() {
     <div className="flex items-center justify-center min-h-screen bg-gray-100">
       <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md">
         <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">
-          Sign in to your account
+          Zaloguj się
         </h2>
 
         {error && (
@@ -50,7 +50,7 @@ export default function Login() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-gray-700 text-sm mb-1">Email</label>
+            <label className="block text-gray-700 text-sm mb-1">Adres e-mail</label>
             <input
               type="email"
               value={email}
@@ -62,7 +62,7 @@ export default function Login() {
           </div>
 
           <div>
-            <label className="block text-gray-700 text-sm mb-1">Password</label>
+            <label className="block text-gray-700 text-sm mb-1">Hasło</label>
             <input
               type="password"
               value={password}
@@ -78,7 +78,7 @@ export default function Login() {
             disabled={loading}
             className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
-            {loading ? "Logging in..." : "Log In"}
+            {loading ? "Logowanie..." : "Zaloguj się"}
           </button>
         </form>
       </div>

@@ -9,6 +9,7 @@ export default function AddUser() {
     email: "",
     phone: "",
     password: "",
+    confirmPassword: "",
     user_type: "employee",
     department: "",
     employee_number: "",
@@ -35,6 +36,12 @@ export default function AddUser() {
     setLoading(true);
     setMessage("");
 
+    if (userFormData.password !== userFormData.confirmPassword) {
+      setMessage('Hasła nie pasują do siebie');
+      setLoading(false);
+      return;
+    }
+
     const payload = { ...userFormData, is_active: true, metadata: {} };
 
     try {
@@ -58,6 +65,7 @@ export default function AddUser() {
         email: "",
         phone: "",
         password: "",
+        confirmPassword: "",
         user_type: "employee",
         department: "",
         employee_number: "",
@@ -154,17 +162,6 @@ export default function AddUser() {
         <form onSubmit={handleUserSubmit} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700">Nazwa użytkownika</label>
-              <input
-                type="text"
-                name="username"
-                value={userFormData.username}
-                onChange={handleUserChange}
-                className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
               <label className="block text-sm font-medium text-gray-700">Imię *</label>
               <input
                 type="text"
@@ -189,7 +186,18 @@ export default function AddUser() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">Email *</label>
+              <label className="block text-sm font-medium text-gray-700">Nazwa użytkownika</label>
+              <input
+                type="text"
+                name="username"
+                value={userFormData.username}
+                onChange={handleUserChange}
+                className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Adres e-mail *</label>
               <input
                 type="email"
                 name="email"
@@ -201,19 +209,18 @@ export default function AddUser() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">Hasło *</label>
+              <label className="block text-sm font-medium text-gray-700">Dział</label>
               <input
-                type="password"
-                name="password"
-                value={userFormData.password}
+                type="text"
+                name="department"
+                value={userFormData.department}
                 onChange={handleUserChange}
-                required
                 className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">Telefon</label>
+              <label className="block text-sm font-medium text-gray-700">Numer telefonu</label>
               <input
                 type="text"
                 name="phone"
@@ -239,23 +246,36 @@ export default function AddUser() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">Dział</label>
-              <input
-                type="text"
-                name="department"
-                value={userFormData.department}
-                onChange={handleUserChange}
-                className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
               <label className="block text-sm font-medium text-gray-700">Numer pracownika</label>
               <input
                 type="text"
                 name="employee_number"
                 value={userFormData.employee_number}
                 onChange={handleUserChange}
+                className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Hasło *</label>
+              <input
+                type="password"
+                name="password"
+                value={userFormData.password}
+                onChange={handleUserChange}
+                required
+                className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Potwierdź hasło *</label>
+              <input
+                type="password"
+                name="confirmPassword"
+                value={userFormData.confirmPassword}
+                onChange={handleUserChange}
+                required
                 className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500"
               />
             </div>
