@@ -89,17 +89,11 @@ router.post('/users/remove', ensureJson, async (req, res) => {
 });
 
 router.patch('/users/update', ensureJson, async (req, res) => {
-    console.log('req.body:', req.body);  // Debug: Log incoming request body
     const { user_id, password, ...fields } = req.body;
     if (!user_id) return res.status(400).json({ error: 'user_id is required' });
 
-    console.log('Updating user:', user_id, 'password provided:', !!password, 'password value:', password ? '***' : 'none');
-
     try {
-        if (password) {
-            fields.password_hash = await hashPassword(password);
-            console.log('Hashed password generated for user:', user_id);
-        }
+        if (password) fields.password_hash = await hashPassword(password);
         const allowed = ['username','first_name','last_name','email','phone','user_type','department','employee_number','is_active','metadata','password_hash'];
         const sets = [];
         const values = [];
@@ -120,7 +114,6 @@ router.patch('/users/update', ensureJson, async (req, res) => {
 
         const result = await pool.query(sql, values);
         if (result.rowCount === 0) return res.status(404).json({ error: 'user not found' });
-        console.log('User updated successfully:', user_id, 'new password_hash:', result.rows[0].password_hash ? '***' : 'none');
         res.status(200).json({ user: result.rows[0] });
     } catch (err) {
         console.error('DB error:', err);
