@@ -4,6 +4,7 @@ import cors from 'cors'
 import QRCode from 'qrcode'
 import nodemailer from 'nodemailer'
 import crypto from 'crypto'
+import rateLimit from 'express-rate-limit'
 import databaseRoutes, { pool, createQR, hashPassword, verifyPassword } from './database.js';
 
 const app = express()
@@ -12,7 +13,13 @@ const PORT = 4000
 app.use(cors());
 app.use(express.json())
 
-// Removed local definitions of hashPassword and verifyPassword
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 API requests per windowMs
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 app.get('/', (req, res) => {
     res.send("Serwer Node.js działa\n")
@@ -189,7 +196,7 @@ app.post('/qrcode_generation', async (req, res) => {
  * POST /login
  * Authenticate user with email and password.
  */
-app.post('/login', async (req, res) => {
+app.post('/login', apiLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     await pool.query('INSERT INTO access_mgmt.admin_audit (action, target_type, details, ip_address) VALUES ($1, $2, $3, $4)', ['login_failed', 'user', { email, reason: 'Missing email or password' }, req.ip]);
@@ -223,7 +230,7 @@ app.post('/login', async (req, res) => {
  * POST /logout
  * Log user logout.
  */
-app.post('/logout', async (req, res) => {
+app.post('/logout', apiLimiter, async (req, res) => {
   const { user_id } = req.body;
   if (user_id) {
     try {
@@ -235,7 +242,7 @@ app.post('/logout', async (req, res) => {
   res.json({ ok: true });
 });
 
-app.use('/api/v1', databaseRoutes);
+app.use('/api/v1', apiLimiter, databaseRoutes);
 
 app.listen(PORT, () => {
     console.log(`Serwer działa na http://localhost:${PORT}`)
