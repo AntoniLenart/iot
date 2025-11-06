@@ -97,34 +97,6 @@ async function sendEmailWithQR(toEmail, qrBuffer) {
 }
 
 /**
- * POST /access-check
- * Endpoint służący do odbierania danych w formacie JSON od klienta.
- *
- * @param {import('express').Request} req - Obiekt żądania Express, zawiera JSON w req.body
- * @param {import('express').Response} res - Obiekt odpowiedzi Express, wysyła potwierdzenie w JSON
- *
- * @example
- * // Przykład wywołania endpointu po stronie klienta przy użyciu axios
- * const axios = require('axios');
- *
- * axios.post('http://localhost:4000/open_request', { type: rfid/qrcode/biometry, data: '...', door_id: '...' })
- *   .then(res => console.log(res.data))
- *   .catch(err => console.error(err));
- *
- * @returns {Object} JSON z wiadomością potwierdzającą odebranie danych oraz przesłanymi danymi
- */
-
-app.post('/access-check', (req, res) => {
-  const receivedData = req.body;
-  console.log('Otrzymano POST:', receivedData);
-
-  res.json({
-    status: 'allow',
-    door_id: receivedData.door_id
-    });
-});
-
-/**
  * POST /qrcode_generation
  *
  * Endpoint odbiera JSON od klienta, generuje losowy 32-znakowy token,
@@ -177,11 +149,12 @@ app.post('/qrcode_generation', async (req, res) => {
       issued_by: req.body.issued_by || null
     };
 
+    console.log(req.body.recipient_info || req.body.email)
     const saved = await createQR(qrPayload);
 
-    /* Wysylanie maila z wygenerowanym wczesniej kodem QR */
-    if(req.body.email){
-        await sendEmailWithQR(req.body.email, qrBuffer)
+    /* Wysyłanie maila z wygenerowanym wczesniej kodem QR */
+    if(req.body.recipient_info || req.body.email){
+        await sendEmailWithQR(req.body.recipient_info || req.body.email, qrBuffer)
     }
 
     res.status(201).json({ token, qrCode: qrDataUrl, qr_record: saved.qr });
