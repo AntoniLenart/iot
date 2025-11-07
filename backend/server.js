@@ -128,6 +128,12 @@ async function sendEmailWithQR(toEmail, qrBuffer, valid_from, valid_until, usage
  * @returns {Object} JSON z polami:
  *  - TODO
  */
+const toUTCISOString = (dateString) => {
+  if (!dateString) return null;
+  const d = new Date(dateString);
+  return isNaN(d.getTime()) ? null : d.toISOString(); // always UTC
+};
+
 app.post('/qrcode_generation', async (req, res) => {
   try {
     if (!req.body.valid_until) return res.status(400).json({ error: 'valid_until is required' });
@@ -145,12 +151,15 @@ app.post('/qrcode_generation', async (req, res) => {
     const qrDataUrl = await QRCode.toDataURL(stringData)
     const qrBuffer = await QRCode.toBuffer(stringData);
 
+    const validFrom = toUTCISOString(req.body.valid_from) || new Date().toISOString();
+    const validUntil = toUTCISOString(req.body.valid_until);
+
     // Zapis do bazy przez bezpośrednie wywołanie funkcji z database.js
     const qrPayload = {
-      code: qrDataUrl,
+      code: token,
       credential_id: req.body.credential_id || null,
-      valid_from: req.body.valid_from || null,
-      valid_until: req.body.valid_until,
+      valid_from: validFrom,
+      valid_until: validUntil,
       usage_limit: req.body.usage_limit || 1,
       recipient_info: req.body.recipient_info || req.body.email || null,
       metadata: Object.assign({}, req.body.metadata || {}, { token }),
@@ -162,7 +171,7 @@ app.post('/qrcode_generation', async (req, res) => {
 
     /* Wysyłanie maila z wygenerowanym wczesniej kodem QR */
     if(req.body.recipient_info || req.body.email){
-        await sendEmailWithQR(req.body.recipient_info || req.body.email, req.body.valid_from, req.body.valid_until, req.body.usage_limit, qrBuffer)
+        await sendEmailWithQR(req.body.recipient_info || req.body.email, qrBuffer, validFrom, validUntil, req.body.usage_limit)
     }
 
     res.status(201).json({ token, qrCode: qrDataUrl, qr_record: saved.qr });
