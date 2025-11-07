@@ -58,7 +58,7 @@ app.get('/', (req, res) => {
  * Email jest wysyłany z adresu `"QR Bot" <no-reply@sandbox...mailgun.org>`.
  * Wszelkie błędy podczas wysyłki są przechwytywane i logowane w konsoli.
  */
-async function sendEmailWithQR(toEmail, qrBuffer) {
+async function sendEmailWithQR(toEmail, qrBuffer, valid_from, valid_until, usage_limit) {
    try {
         const transporter = nodemailer.createTransport({
                 host: process.env.MAILGUN_HOST,
@@ -76,9 +76,17 @@ async function sendEmailWithQR(toEmail, qrBuffer) {
                 subject: 'Your generated QR code',
                 html: `
                 <h2>Hello!</h2>
-                <p>Here’s your QR access code</p>
+                <p>Here’s your QR access code:</p>
                 <img src="cid:qrcode_cid" alt="QR Code" />
-                `,
+                <hr />
+                <h3>QR Code Details:</h3>
+                <ul>
+                  <li><strong>Valid from:</strong> ${valid_from}</li>
+                  <li><strong>Valid until:</strong> ${valid_until}</li>
+                  <li><strong>Usage limit:</strong> ${usage_limit}</li>
+                </ul>
+                <p>Please keep this email safe — the QR code will only work within the validity period and usage limit specified above.</p>
+              `,
 
                 attachments: [
                 {
@@ -154,7 +162,7 @@ app.post('/qrcode_generation', async (req, res) => {
 
     /* Wysyłanie maila z wygenerowanym wczesniej kodem QR */
     if(req.body.recipient_info || req.body.email){
-        await sendEmailWithQR(req.body.recipient_info || req.body.email, qrBuffer)
+        await sendEmailWithQR(req.body.recipient_info || req.body.email, req.body.valid_from, req.body.valid_until, req.body.usage_limit, qrBuffer)
     }
 
     res.status(201).json({ token, qrCode: qrDataUrl, qr_record: saved.qr });
