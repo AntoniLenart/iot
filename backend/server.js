@@ -141,7 +141,7 @@ app.post('/qrcode_generation', async (req, res) => {
     const inputData = req.body
     const token = crypto.randomBytes(16).toString('hex')
 
-    const combinedData = { ...inputData, token }
+    const combinedData = { token }
     const stringData = JSON.stringify(combinedData)
 
     // Dla testów
