@@ -3,25 +3,21 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../components/AuthContext";
 
 export default function Dashboard() {
-  const [hrFree, setHrFree] = useState(true);
-  const [mainFree, setMainFree] = useState(true);
   const [svgMarkup, setSvgMarkup] = useState(null);
   const { user } = useAuth();
   const isAdmin = user?.user_type === "admin";
   const [logs, setLogs] = useState([]);
   const [usersMap, setUsersMap] = useState({});
 
+  const [plans, setPlans] = useState([]);
+  const [activeId, setActiveId] = useState(localStorage.getItem("active_floor_id"));
+  
+  const [svgIds, setSvgIds] = useState([]);
+  const [hoveredRoomId, setHoveredRoomId] = useState(null);
+  const [roomStatus, setRoomStatus] = useState({});
+
+  
   useEffect(() => {
-    const saved = localStorage.getItem("floor_plan_svg");
-    if (saved) setSvgMarkup(saved);
-
-    const savedRooms = localStorage.getItem("rooms_state");
-    if (savedRooms) {
-      const { hrFree, mainFree } = JSON.parse(savedRooms);
-      setHrFree(hrFree);
-      setMainFree(mainFree);
-    }
-
     // Fetch latest logs and users for friendly display
     const fetchLogs = async () => {
       try {
@@ -51,31 +47,6 @@ export default function Dashboard() {
     if (isAdmin) fetchLogs();
   }, [isAdmin]);
 
-  useEffect(() => {
-    localStorage.setItem("rooms_state", JSON.stringify({
-      hrFree,
-      mainFree,
-    }));
-  }, [hrFree, mainFree]);
-
-  const handleUpload = async (e) => {
-    const file = e.target.files[0];
-
-    if (!file) return;
-    
-    const text = await file.text();
-    setSvgMarkup(text);
-    localStorage.setItem("floor_plan_svg", text);
-  };
-
-  const handleResetPlan = () => {
-    setSvgMarkup(null);
-    setHrFree(true);
-    setMainFree(true);
-    localStorage.removeItem("floor_plan_svg");
-    localStorage.removeItem("rooms_state");
-  };
-
   const getFriendlyLog = (log) => {
     const userName = usersMap[log.admin_user] || 'System';
     const time = new Date(log.occurred_at).toLocaleTimeString('pl-PL');
@@ -97,66 +68,101 @@ export default function Dashboard() {
     }
   };
 
+   useEffect(() => {
+    // Wczytaj plany z localStorage
+    const savedPlans = JSON.parse(localStorage.getItem("floor_plans") || "[]");
+
+    const savedActive = localStorage.getItem("active_floor_id");
+    const fallback = savedPlans[0]?.id || null;
+    const idToUse = savedActive || fallback;
+
+    // Ustawiamy WSZYSTKO na raz
+    setPlans(savedPlans);
+    setActiveId(idToUse);
+    setSvgMarkup(savedPlans.find(p => p.id === idToUse)?.svg || null);
+
+    // Nasłuchuj zmian w localStorage
+    const handleStorageChange = () => {
+      // aktualizuj plany
+      const updatedPlans = JSON.parse(localStorage.getItem("floor_plans") || "[]");
+      setPlans(updatedPlans);
+
+      const updatedActive = localStorage.getItem("active_floor_id");
+      const plan = updatedPlans.find((p) => p.id === updatedActive);
+      setActiveId(updatedActive);
+      if (plan) setSvgMarkup(plan.svg);
+
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("floorplans-updated", handleStorageChange);
+
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("floorplans-updated", handleStorageChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    const saved = JSON.parse(localStorage.getItem("room_reservations") || "{}");
+    setRoomStatus(saved);
+  }, []);
+
+  // Zmiana piętra (dropdown)
+  const handleFloorChange = (id) => {
+    setActiveId(id);
+    localStorage.setItem("active_floor_id", id);
+    const plan = plans.find((p) => p.id === id);
+    setSvgMarkup(plan?.svg || null);
+  };
+
   return (
-    <div className="p-1 flex flex-col">
-      <div className="flex justify-between items-center mb-6">
+    <div className="flex flex-col">
+      {/* Górny pasek */}
+      <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-semibold">Dashboard</h2>
 
-        {svgMarkup && (
-          <div className="flex gap-3">
-            {/* HR */}
-            <button
-              onClick={() => setHrFree(prev => !prev)}
-              className={`px-3 py-1 text-sm rounded font-medium transition ${
-                hrFree
-                  ? "bg-green-600 hover:bg-green-700 text-white"
-                  : "bg-red-600 hover:bg-red-700 text-white"
-              }`}
+        {plans.length > 0 && (
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-600">Piętro:</label>
+            <select
+              className="border rounded px-2 py-1 text-sm"
+              value={activeId || ""}
+              onChange={(e) => handleFloorChange(e.target.value)}
             >
-              {hrFree ? "Zarezerwuj pokój HR" : "Usuń rezerwację HR"}
-            </button>
-
-            {/* Main */}
-            <button
-              onClick={() => setMainFree(prev => !prev)}
-              className={`px-3 py-1 text-sm rounded font-medium transition ${
-                mainFree
-                  ? "bg-green-600 hover:bg-green-700 text-white"
-                  : "bg-red-600 hover:bg-red-700 text-white"
-              }`}
-            >
-              {mainFree ? "Zarezerwuj pokój Main" : "Usuń rezerwację Main"}
-            </button>
+              {plans.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
           </div>
         )}
       </div>
 
+
       {/* Mapa sal */}
-      <div className="bg-white p-1 rounded-lg shadow min-h-[400px] flex justify-center items-center">
-        {svgMarkup ? (
-          <FloorPlan hrFree={hrFree} mainFree={mainFree} svgMarkup={svgMarkup} />
+      <div
+        className="bg-white p-2 rounded-lg shadow mb-4 overflow-hidden select-none flex justify-center items-center mx-auto relative"
+        style={{
+          width: "100%",
+          maxWidth: "800px",
+          height: "55vh",
+          minHeight: "350px",
+        }}
+      >
+        {/*BLOKADA WCZESNEGO RENDERU */}
+        {!plans.length || !activeId ? (
+          <p className="text-gray-500">Ładowanie mapy...</p>
+        ) : svgMarkup ? (
+          <div className="w-full h-full flex justify-center items-center svg-wrapper">
+          <FloorPlan svgMarkup={svgMarkup} 
+          onIdsDetected={setSvgIds}
+          hoveredRoomId={hoveredRoomId}
+          roomStatus={roomStatus} />
+          </div>
         ) : (
           <p className="text-gray-500">Brak wczytanego planu piętra</p>
-        )}
-      </div>
-
-      <div className="flex justify-end items-center gap-3 my-1">
-        {/* Reset planu */}
-        {svgMarkup && (
-          <button
-            onClick={handleResetPlan}
-            className="bg-red-600 hover:bg-red-700 text-white px-4 py-1 rounded text-sm transition"
-          >
-            Usuń plan
-          </button>
-        )}
-
-        {/* Import planu */}
-        {isAdmin && (
-        <label className="cursor-pointer bg-gray-700 text-white px-4 py-1 rounded text-sm hover:bg-gray-800 transition">
-          Importuj plan piętra
-          <input type="file" accept=".svg" className="hidden" onChange={handleUpload} />
-        </label>
         )}
       </div>
 

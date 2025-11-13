@@ -4,3 +4,16 @@ body {
   background-color: theme('colors.gray.100');
   color: theme('colors.gray.900');
 }
+
+.svg-wrapper svg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.svg-wrapper {
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+}

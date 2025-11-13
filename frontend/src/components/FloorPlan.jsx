@@ -1,41 +1,104 @@
 import { useEffect, useRef } from "react";
 
-export default function FloorPlan({ hrFree, mainFree, svgMarkup }) {
+export default function FloorPlan({ svgMarkup, onIdsDetected, hoveredRoomId, roomStatus }) {
   const wrapperRef = useRef(null);
 
   useEffect(() => {
     const svg = wrapperRef.current?.querySelector("svg");
     if (!svg) return;
-    
 
-    const updateRoom = (roomId, isFree) => {
-      const room = svg.querySelector(`#${roomId}`);
-      if (!room) return;
+    // skalowanie wewnątrz SVG — poprawne
+    svg.style.maxWidth = "100%";
+    svg.style.maxHeight = "100%";
+    svg.style.width = "100%";
+    svg.style.height = "auto";
+    svg.style.objectFit = "contain";
+    svg.style.display = "block";
 
-      const fillColor = isFree
-        ? "rgba(16, 185, 129, 0.45)"
-        : "rgba(239, 68, 68, 0.45)"
+    const svgWidth = parseFloat(svg.getAttribute("width") || 0);
+    const svgHeight = parseFloat(svg.getAttribute("height") || 0);
 
-      room.style.fill = fillColor;
-      room.style.opacity = 1;
-      room.style.fillOpacity = 1;
+    let elements = [...svg.querySelectorAll("path[id], rect[id]")];
 
-      svg.appendChild(room); // na wierzch
-    };
+    elements = elements.filter(el => {
+      if (!el.id) return false;
 
-    updateRoom("HR", hrFree);
-    updateRoom("Main", mainFree);
+      // tylko dla rect: odrzucamy za duże tło
+      if (el.tagName === "rect") {
+        const w = parseFloat(el.getAttribute("width") || 0);
+        const h = parseFloat(el.getAttribute("height") || 0);
 
-  }, [hrFree, mainFree, svgMarkup]);
+        // rect tła zwykle ma rozmiar zbliżony do SVG
+        const isBackground =
+          w >= svgWidth * 0.8 &&   // 80% szerokości
+          h >= svgHeight * 0.8;    // 80% wysokości
+
+        if (isBackground) return false;
+      }
+
+      return true;
+    });
+
+const ids = elements.map(el => el.id);
+
+onIdsDetected?.(ids);
+
+  }, [svgMarkup]);
+
+  useEffect(() => {
+    const svg = wrapperRef.current?.querySelector("svg");
+    if (!svg) return;
+
+    const paths = svg.querySelectorAll("path[id], rect[id]");
+
+    // krok 1: bazowy reset
+    paths.forEach((p) => {
+      p.style.outline = "none";
+      p.style.stroke = "";
+      p.style.strokeWidth = "";
+      p.style.fill = "";
+      p.style.fillOpacity = "";
+    });
+
+    // krok 2: nałóż kolory wg roomStatus
+    Object.entries(roomStatus || {}).forEach(([key, isFree]) => {
+      const pureId = key.split(":")[1] || key;
+
+      const el = svg.querySelector(`#${CSS.escape(pureId)}`);
+      if (!el) return;
+
+      el.style.fill = isFree
+        ? "rgba(16,185,129,0.45)"   // wolny
+        : "rgba(239,68,68,0.45)";   // zajęty
+      el.style.fillOpacity = "1";
+    });
+
+    // krok 3: nałóż hover na koniec (nadpisze kolor dla hoverowanego pokoju)
+    if (hoveredRoomId) {
+      const el = svg.querySelector(`#${CSS.escape(hoveredRoomId)}`);
+      if (el) {
+        el.style.stroke = "#2563eb";
+        el.style.strokeWidth = "6px";
+        el.style.fill = "rgba(37, 99, 235, 0.35)";
+        el.style.fillOpacity = "1";
+      }
+    }
+  }, [roomStatus, hoveredRoomId, svgMarkup]);
 
   return (
     <div
       ref={wrapperRef}
-      className="w-full h-full max-h-[400px] flex justify-center items-center overflow-auto bg-white"
+      className="w-full h-full flex justify-center items-center overflow-hidden bg-white"
     >
       {svgMarkup && (
         <div
-          className="flex justify-center items-center origin-center scale-[0.4]"
+          style={{
+            width: "100%",
+            height: "100%",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
           dangerouslySetInnerHTML={{ __html: svgMarkup }}
         />
       )}
