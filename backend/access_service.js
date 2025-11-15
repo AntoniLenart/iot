@@ -2,12 +2,14 @@
 import express from 'express'
 import dotenv from 'dotenv'
 import rateLimit from 'express-rate-limit'
-import { Pool } from 'pkg'
+import pkg from 'pg';
+const { Pool } = pkg;
 
 dotenv.config()
 
 const app = express()
 app.use(express.json())
+app.use(apiLimiter); 
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -158,7 +160,7 @@ app.post('/access-check', async (req, res) => {
 })
 
 const PORT = Number(process.env.ACCESS_SVC_PORT || 4001)
-app.use(apiLimiter); 
+
 app.listen(PORT, () => {
   console.log(`Access service listening on http://127.0.0.1:${PORT}`)
 })
