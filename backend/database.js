@@ -51,26 +51,56 @@ router.get('/users/list', async (req, res) => {
 });
 
 router.post('/users/create', ensureJson, async (req, res) => {
-    const { first_name, last_name, email, phone, user_type = 'employee', department, employee_number, password } = req.body;
+    let username_tmp = ""
+
+    const { username, first_name, last_name, email, phone, user_type = 'employee', department, employee_number, password } = req.body;
     if (!first_name || !last_name || !password) {
         return res.status(400).json({ error: 'first_name, last_name, and password are required' });
+    }
+
+    // REGEX for first/last name, phone number and email verification
+    const emailRegex = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+    const phoneRegex = /^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$/;
+    const nameRegex = /^[A-Za-zÀ-ÿ\-]{2,100}$/;
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,100}$/;
+
+    if (!nameRegex.test(first_name)) {
+        return res.status(400).json({ error: 'Invalid first name format' });
+    }
+    if (!nameRegex.test(last_name)) {
+        return res.status(400).json({ error: 'Invalid last name format' });
+    }
+    if (email && !emailRegex.test(email)) {
+        return res.status(400).json({ error: 'Invalid email format' });
+    }
+    if (phone && !phoneRegex.test(phone)) {
+        return res.status(400).json({ error: 'Invalid phone number format' });
+    }
+    if (!passwordRegex.test(password)) {
+        return res.status(400).json({ 
+        error: 'Password must be at least 8 characters long and include: uppercase, lowercase, number, special character'
+        });
+    }
+
+    if (!username || username.trim() === "") {
+        username_tmp = `${first_name}_${last_name}`;
     }
 
     try {
         const hashedPassword = await hashPassword(password);
         const insertQuery = `
-      INSERT INTO access_mgmt.users (first_name, last_name, email, phone, password_hash, user_type, department, employee_number)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-      RETURNING user_id, first_name, last_name, email, phone, user_type, department, employee_number, created_at;
+      INSERT INTO access_mgmt.users (username, first_name, last_name, email, phone, password_hash, user_type, department, employee_number)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      RETURNING user_id, username, first_name, last_name, email, phone, user_type, department, employee_number, created_at;
     `;
         const result = await pool.query(insertQuery, [
-            first_name, last_name, email || null, phone || null, hashedPassword,
+            username || username_tmp, first_name, last_name, email || null, phone || null, hashedPassword,
             user_type, department || null, employee_number || null
         ]);
         res.status(201).json({ user: result.rows[0] });
     } catch (err) {
         console.error('DB error:', err);
-        res.status(500).json({ error: 'database error' });
+        res.status(500).json({ error: err });
     }
 });
 
@@ -89,8 +119,24 @@ router.post('/users/remove', ensureJson, async (req, res) => {
 });
 
 router.patch('/users/update', ensureJson, async (req, res) => {
-    const { user_id, password, ...fields } = req.body;
+    const { user_id, password, email, phone, ...fields } = req.body;
     if (!user_id) return res.status(400).json({ error: 'user_id is required' });
+
+    const emailRegex = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+    const phoneRegex = /^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$/;
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,100}$/;
+
+    if (email && !emailRegex.test(email)) {
+        return res.status(400).json({ error: 'Invalid email format' });
+    }
+    if (phone && !phoneRegex.test(phone)) {
+        return res.status(400).json({ error: 'Invalid phone number format' });
+    }
+    if (!passwordRegex.test(password) && password) {
+        return res.status(400).json({ 
+        error: 'Password must be at least 8 characters long and include: uppercase, lowercase, number, special character'
+        });
+    }
 
     try {
         if (password) fields.password_hash = await hashPassword(password);
@@ -117,7 +163,7 @@ router.patch('/users/update', ensureJson, async (req, res) => {
         res.status(200).json({ user: result.rows[0] });
     } catch (err) {
         console.error('DB error:', err);
-        res.status(500).json({ error: 'database error' });
+        res.status(500).json({ error: err.message });
     }
 });
 

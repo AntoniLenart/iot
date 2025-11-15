@@ -46,7 +46,7 @@ export default function Settings() {
     e.preventDefault();
     setMessage('');
     if (formData.password !== formData.confirmPassword) {
-      setMessage('Hasła nie pasują do siebie');
+      setMessage('Błąd: Hasła nie pasują do siebie');
       return;
     }
     if (!formData.user_id) {

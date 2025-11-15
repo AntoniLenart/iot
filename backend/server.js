@@ -4,6 +4,7 @@ import cors from 'cors'
 import QRCode from 'qrcode'
 import nodemailer from 'nodemailer'
 import crypto from 'crypto'
+import escape from 'escape-html'
 import rateLimit from 'express-rate-limit'
 import databaseRoutes, { pool, createQR, hashPassword, verifyPassword } from './database.js';
 
@@ -58,7 +59,7 @@ app.get('/', (req, res) => {
  * Email jest wysyłany z adresu `"QR Bot" <no-reply@sandbox...mailgun.org>`.
  * Wszelkie błędy podczas wysyłki są przechwytywane i logowane w konsoli.
  */
-async function sendEmailWithQR(toEmail, qrBuffer) {
+async function sendEmailWithQR(toEmail, qrBuffer, valid_from, valid_until, usage_limit) {
    try {
         const transporter = nodemailer.createTransport({
                 host: process.env.MAILGUN_HOST,
@@ -76,9 +77,17 @@ async function sendEmailWithQR(toEmail, qrBuffer) {
                 subject: 'Your generated QR code',
                 html: `
                 <h2>Hello!</h2>
-                <p>Here’s your QR access code</p>
+                <p>Here’s your QR access code:</p>
                 <img src="cid:qrcode_cid" alt="QR Code" />
-                `,
+                <hr />
+                <h3>QR Code Details:</h3>
+                <ul>
+                  <li><strong>Valid from:</strong> ${valid_from}</li>
+                  <li><strong>Valid until:</strong> ${valid_until}</li>
+                  <li><strong>Usage limit:</strong> ${usage_limit}</li>
+                </ul>
+                <p>Please keep this email safe — the QR code will only work within the validity period and usage limit specified above.</p>
+              `,
 
                 attachments: [
                 {
@@ -95,34 +104,6 @@ async function sendEmailWithQR(toEmail, qrBuffer) {
         console.error('❌ Failed to send email:', error)
    }
 }
-
-/**
- * POST /access-check
- * Endpoint służący do odbierania danych w formacie JSON od klienta.
- *
- * @param {import('express').Request} req - Obiekt żądania Express, zawiera JSON w req.body
- * @param {import('express').Response} res - Obiekt odpowiedzi Express, wysyła potwierdzenie w JSON
- *
- * @example
- * // Przykład wywołania endpointu po stronie klienta przy użyciu axios
- * const axios = require('axios');
- *
- * axios.post('http://localhost:4000/open_request', { type: rfid/qrcode/biometry, data: '...', door_id: '...' })
- *   .then(res => console.log(res.data))
- *   .catch(err => console.error(err));
- *
- * @returns {Object} JSON z wiadomością potwierdzającą odebranie danych oraz przesłanymi danymi
- */
-
-app.post('/access-check', (req, res) => {
-  const receivedData = req.body;
-  console.log('Otrzymano POST:', receivedData);
-
-  res.json({
-    status: 'allow',
-    door_id: receivedData.door_id
-    });
-});
 
 /**
  * POST /qrcode_generation
@@ -148,40 +129,67 @@ app.post('/access-check', (req, res) => {
  * @returns {Object} JSON z polami:
  *  - TODO
  */
+const toUTCISOString = (dateString) => {
+  if (!dateString) return null;
+  const d = new Date(dateString);
+  return isNaN(d.getTime()) ? null : d.toISOString(); // always UTC
+};
+
 app.post('/qrcode_generation', async (req, res) => {
   try {
-    if (!req.body.valid_until) return res.status(400).json({ error: 'valid_until is required' });
+     // Validate required fields
+    if (!req.body.valid_until) {
+      return res.status(400).json({ error: "valid_until is required" });
+    }
 
-    const inputData = req.body
-    const token = crypto.randomBytes(16).toString('hex')
+    const { recipient_info, email, valid_from, valid_until, usage_limit = 1, credential_id, metadata = {}, issued_by } = req.body;
 
-    const combinedData = { ...inputData, token }
-    const stringData = JSON.stringify(combinedData)
+    // Generate token
+    const token = crypto.randomBytes(16).toString("hex");
 
-    // Dla testów
-    const qrTerminal = await QRCode.toString(stringData, { type: 'terminal' });
-    console.log(qrTerminal);
-
-    const qrDataUrl = await QRCode.toDataURL(stringData)
-    const qrBuffer = await QRCode.toBuffer(stringData);
-
-    // Zapis do bazy przez bezpośrednie wywołanie funkcji z database.js
+    // Prepare QR code data
     const qrPayload = {
-      code: qrDataUrl,
-      credential_id: req.body.credential_id || null,
-      valid_from: req.body.valid_from || null,
-      valid_until: req.body.valid_until,
-      usage_limit: req.body.usage_limit || 1,
-      recipient_info: req.body.recipient_info || req.body.email || null,
-      metadata: Object.assign({}, req.body.metadata || {}, { token }),
-      issued_by: req.body.issued_by || null
+      code: token,
+      credential_id: credential_id || null,
+      valid_from: toUTCISOString(valid_from) || new Date().toISOString(),
+      valid_until: toUTCISOString(valid_until),
+      usage_limit,
+      recipient_info: recipient_info || email || null,
+      metadata: { ...metadata, token },
+      issued_by: issued_by || null,
     };
 
+    // Save QR to database
     const saved = await createQR(qrPayload);
 
-    /* Wysylanie maila z wygenerowanym wczesniej kodem QR */
-    if(req.body.email){
-        await sendEmailWithQR(req.body.email, qrBuffer)
+    // Generate QR codes
+    const stringData = JSON.stringify({ token });
+    const qrTerminal = await QRCode.toString(stringData, { type: "terminal" });
+    console.log(qrTerminal);
+
+    const qrDataUrl = await QRCode.toDataURL(stringData);
+    const qrBuffer = await QRCode.toBuffer(stringData);
+
+    // Escape values for email
+    const safeValidFrom = escape(qrPayload.valid_from);
+    const safeValidUntil = escape(qrPayload.valid_until);
+    const safeUsageLimit = escape(qrPayload.usage_limit.toString());
+
+    // Send email if recipient is provided
+    const recipientEmail = recipient_info || email;
+    if (recipientEmail) {
+      const emailRegex = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+      if (!emailRegex.test(recipientEmail)) {
+        return res.status(400).json({ error: "Invalid email format" });
+      }
+
+      await sendEmailWithQR(
+        recipientEmail,
+        qrBuffer,
+        safeValidFrom,
+        safeValidUntil,
+        safeUsageLimit
+      );
     }
 
     res.status(201).json({ token, qrCode: qrDataUrl, qr_record: saved.qr });

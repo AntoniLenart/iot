@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export default function AddUser() {
+  const [users, setUsers] = useState([]);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState("user");
   const [userFormData, setUserFormData] = useState({
     username: "",
@@ -21,6 +24,32 @@ export default function AddUser() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
+  // For RFID user list purpose
+  const fetchUsers = async () => {
+    try {
+      const response = await fetch('http://localhost:4000/api/v1/users/list');
+      if (!response.ok) throw new Error('Failed to fetch users');
+      const data = await response.json();
+      setUsers(data.users || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+      fetchUsers();
+  }, [refreshTrigger]);
+
+  // Optional automatic refresh -> 30seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRefreshTrigger((prev) => prev + 1);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   const handleUserChange = (e) => {
     const { name, value } = e.target;
     setUserFormData({ ...userFormData, [name]: value });
@@ -37,7 +66,7 @@ export default function AddUser() {
     setMessage("");
 
     if (userFormData.password !== userFormData.confirmPassword) {
-      setMessage('Hasła nie pasują do siebie');
+      setMessage('Błąd: Hasła nie pasują do siebie');
       setLoading(false);
       return;
     }
@@ -70,6 +99,9 @@ export default function AddUser() {
         department: "",
         employee_number: "",
       });
+
+      setRefreshTrigger(prev => prev + 1); // For current_user list refresh
+
     } catch (error) {
       setMessage(`Błąd: ${error.message}`);
     } finally {
@@ -91,6 +123,7 @@ export default function AddUser() {
           user_id: rfidFormData.user_id,
           credential_type: "rfid_card",
           identifier: rfidFormData.serial, // Use serial as identifier
+          issued_by: JSON.parse(localStorage.getItem('user')).user_id,
           is_active: true,
           metadata: {},
         }),
@@ -112,6 +145,7 @@ export default function AddUser() {
           credential_id: credentialId,
           serial: rfidFormData.serial,
           is_active: true,
+          issued_by: JSON.parse(localStorage.getItem('user')).user_id,
           metadata: {},
         }),
       });
@@ -296,15 +330,22 @@ export default function AddUser() {
         <form onSubmit={handleRfidSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">ID użytkownika *</label>
-            <input
-              type="text"
+
+            <select
               name="user_id"
               value={rfidFormData.user_id}
               onChange={handleRfidChange}
               required
-              placeholder="Wprowadź ID użytkownika"
               className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500"
-            />
+            >
+              <option value="">Wybierz użytkownika</option>
+
+              {users.map((u) => (
+                <option key={u.user_id} value={u.user_id}>
+                  {u.user_id} — {u.first_name} {u.last_name}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>
