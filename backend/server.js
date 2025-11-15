@@ -4,6 +4,7 @@ import cors from 'cors'
 import QRCode from 'qrcode'
 import nodemailer from 'nodemailer'
 import crypto from 'crypto'
+import escape from 'escape-html'
 import rateLimit from 'express-rate-limit'
 import databaseRoutes, { pool, createQR, hashPassword, verifyPassword } from './database.js';
 
@@ -136,42 +137,59 @@ const toUTCISOString = (dateString) => {
 
 app.post('/qrcode_generation', async (req, res) => {
   try {
-    if (!req.body.valid_until) return res.status(400).json({ error: 'valid_until is required' });
+     // Validate required fields
+    if (!req.body.valid_until) {
+      return res.status(400).json({ error: "valid_until is required" });
+    }
 
-    const inputData = req.body
-    const token = crypto.randomBytes(16).toString('hex')
+    const { recipient_info, email, valid_from, valid_until, usage_limit = 1, credential_id, metadata = {}, issued_by } = req.body;
 
-    const combinedData = { token }
-    const stringData = JSON.stringify(combinedData)
+    // Generate token
+    const token = crypto.randomBytes(16).toString("hex");
 
-    // Dla testów
-    const qrTerminal = await QRCode.toString(stringData, { type: 'terminal' });
-    console.log(qrTerminal);
-
-    const qrDataUrl = await QRCode.toDataURL(stringData)
-    const qrBuffer = await QRCode.toBuffer(stringData);
-
-    const validFrom = toUTCISOString(req.body.valid_from) || new Date().toISOString();
-    const validUntil = toUTCISOString(req.body.valid_until);
-
-    // Zapis do bazy przez bezpośrednie wywołanie funkcji z database.js
+    // Prepare QR code data
     const qrPayload = {
       code: token,
-      credential_id: req.body.credential_id || null,
-      valid_from: validFrom,
-      valid_until: validUntil,
-      usage_limit: req.body.usage_limit || 1,
-      recipient_info: req.body.recipient_info || req.body.email || null,
-      metadata: Object.assign({}, req.body.metadata || {}, { token }),
-      issued_by: req.body.issued_by || null
+      credential_id: credential_id || null,
+      valid_from: toUTCISOString(valid_from) || new Date().toISOString(),
+      valid_until: toUTCISOString(valid_until),
+      usage_limit,
+      recipient_info: recipient_info || email || null,
+      metadata: { ...metadata, token },
+      issued_by: issued_by || null,
     };
 
-    console.log(req.body.recipient_info || req.body.email)
+    // Save QR to database
     const saved = await createQR(qrPayload);
 
-    /* Wysyłanie maila z wygenerowanym wczesniej kodem QR */
-    if(req.body.recipient_info || req.body.email){
-        await sendEmailWithQR(req.body.recipient_info || req.body.email, qrBuffer, validFrom, validUntil, req.body.usage_limit)
+    // Generate QR codes
+    const stringData = JSON.stringify({ token });
+    const qrTerminal = await QRCode.toString(stringData, { type: "terminal" });
+    console.log(qrTerminal);
+
+    const qrDataUrl = await QRCode.toDataURL(stringData);
+    const qrBuffer = await QRCode.toBuffer(stringData);
+
+    // Escape values for email
+    const safeValidFrom = escape(qrPayload.valid_from);
+    const safeValidUntil = escape(qrPayload.valid_until);
+    const safeUsageLimit = escape(qrPayload.usage_limit.toString());
+
+    // Send email if recipient is provided
+    const recipientEmail = recipient_info || email;
+    if (recipientEmail) {
+      const emailRegex = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+      if (!emailRegex.test(recipientEmail)) {
+        return res.status(400).json({ error: "Invalid email format" });
+      }
+
+      await sendEmailWithQR(
+        recipientEmail,
+        qrBuffer,
+        safeValidFrom,
+        safeValidUntil,
+        safeUsageLimit
+      );
     }
 
     res.status(201).json({ token, qrCode: qrDataUrl, qr_record: saved.qr });
