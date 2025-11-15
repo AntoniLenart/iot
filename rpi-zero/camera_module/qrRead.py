@@ -97,7 +97,7 @@ class CameraModule:
                         print(f"[INFO] Saved image: {img_path}")
                         print(f"[INFO] Saved JSON:  {json_path}")
 
-                    self.qr_result = qr_json
+                    self.qr_result = data_text
                     self.qr_event.set()
                     return
                 
@@ -138,17 +138,16 @@ if __name__ == "__main__":
     cam = CameraModule(picam)
     cam.start_background_scan()
 
-    print("Show qr code to camer in oreder to read data...")
+    print("Show qr code to camer in order to read data...")
     while True:
         if cam.qr_event.wait(timeout=5):
             print("QR code detected!")
-            print(f"JSON: \n {cam.qr_result}")
+            print(f"QR Data: \n {cam.qr_result}")
             cam.stop_scan()
             cam.cleanup()
             break
         else:
             print("Waiting for QR code...")
            
-
 
 

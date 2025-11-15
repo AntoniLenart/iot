@@ -1,6 +1,7 @@
 import paho.mqtt.client as mqtt
 import time
 import logging
+import ssl
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +13,7 @@ DEFAULT_MQTT_QOS = 1
 DEFAULT_MQTT_PUBLISH_TIMEOUT = 2
 DEFAULT_MQTT_USER = "test"
 DEFAULT_MQTT_PASSWORD = "test"
+DEFAULT_MQTT_CAFILE = "./server.crt"
 
 class MQTTError(Exception):
     pass
@@ -23,6 +25,7 @@ class MQTTClient:
         'port': None,
         'user': None,
         'password': None,
+        'cafile': None,
         'request_topic': None,
         'decision_topic': None,
         'qos': None,
@@ -34,6 +37,7 @@ class MQTTClient:
                  port: int = DEFAULT_MQTT_PORT,
                  user: str = DEFAULT_MQTT_USER,
                  password: str = DEFAULT_MQTT_PASSWORD,
+                 cafile: str = DEFAULT_MQTT_CAFILE,
                  request_topic: str = DEFAULT_MQTT_REQUEST_TOPIC,
                  decision_topic: str = DEFAULT_MQTT_DECISION_TOPIC,
                  qos: int = DEFAULT_MQTT_QOS,
@@ -42,6 +46,7 @@ class MQTTClient:
         self.config['port'] = port
         self.config['user'] = user
         self.config['password'] = password
+        self.config['cafile'] = cafile
         self.config['request_topic'] = request_topic
         self.config['decision_topic'] = decision_topic
         self.config['qos'] = qos
@@ -54,7 +59,7 @@ class MQTTClient:
         for key, value in kwargs.items():
             if key in self.config.keys():
                 self.config[key] = value
-                NON_SENSITIVE_KEYS = ("host", "port", "request_topic", "decision_topic", "qos", "publish_timeout")
+                NON_SENSITIVE_KEYS = ("host", "port", "user", "request_topic", "decision_topic", "qos", "cafile", "qos", "publish_timeout")
                 if key in ("user", "password"):
                     logger.debug(f"MQTT client set config value of key {key} to value [REDACTED]")
                 elif key in NON_SENSITIVE_KEYS:
@@ -68,7 +73,8 @@ class MQTTClient:
         self.mqttc.on_connect = self._on_connect
 
         self.mqttc.username_pw_set(self.config['user'], self.config['password'])
-
+        self.mqttc.tls_set(ca_certs=self.config['cafile'], tls_version=ssl.PROTOCOL_TLSv1_2)
+        self.mqttc.tls_insecure_set(True)
         self.mqttc.connect(self.config['host'], self.config['port'])
         
         self.mqttc.on_message = self._on_message
