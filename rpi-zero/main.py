@@ -3,14 +3,15 @@ import time
 
 import json
 
-from fingerprint_module import FingerprintModule, DEFAULT_PORT, DEFAULT_BAUD
+
+from fingerprint_module.fingerprintRead import FingerprintModule, DEFAULT_PORT, DEFAULT_BAUD
 import time
 import base64
 
 from camera_module.qrRead import CameraModule
 from picamera2 import Picamera2
 
-import mqttClient
+import rfid_module.mqttClient as mqttClient
 import dotenv
 
 import RPi.GPIO as GPIO
@@ -55,7 +56,7 @@ if __name__ == "__main__":
     request_topic = "access/door/hr/request"
     decision_topic = "access/door/hr/decision"
 
-    secrets = dotenv.dotenv_values("env")
+    secrets = dotenv.dotenv_values(".env")
     mqtt = mqttClient.MQTTClient(
                 request_topic=request_topic,
                 decision_topic=decision_topic)
@@ -97,10 +98,12 @@ if __name__ == "__main__":
             s_uid = scanner.qr_event.wait(0.1)
 
             if f_uid:
-                print(f_uid)
                 json_request = createJSONRequest("fingerprint", f_uid)
                 logger.debug(f"Json request: {json_request}")
+                f_uid = None
                 scanner.stop_scan()
+                fingerprint.stop_scan()
+
                 if mqtt.sendRequest(json_request):
                     timeoutStart = time.time_ns()
                     while time.time_ns() - timeoutStart <= DEFAULT_RESPONSE_TIMEOUT_NS:
@@ -132,12 +135,13 @@ if __name__ == "__main__":
                 # Start scanning for new fingerprint eigenvalues
                 fingerprint.new_scan()
                 scanner.start_background_scan()
-                f_uid = None
                 time.sleep(5)
             elif s_uid:
                 json_request = createJSONRequest("qr", scanner.qr_result)
                 logger.debug(f"Json request: {json_request}")
+                s_uid = None
                 fingerprint.stop_scan()
+                scanner.stop_scan()
 
                 if mqtt.sendRequest(json_request):
                     timeoutStart = time.time_ns()
@@ -169,12 +173,9 @@ if __name__ == "__main__":
 
 
 
-                # Stop thread
-                scanner.stop_scan()
                 # Start scanning for new qr code (reset events and qr_result value in class)
                 scanner.start_background_scan()
                 fingerprint.new_scan()
-                s_uid = None
                 time.sleep(5)
 
 
