@@ -1,21 +1,30 @@
 // access-service.js
 import express from 'express'
 import dotenv from 'dotenv'
-import { Pool } from 'pg'
+import rateLimit from 'express-rate-limit'
+import { Pool } from 'pkg'
 
 dotenv.config()
 
 const app = express()
 app.use(express.json())
 
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // max requests per IP
+  message: {
+    error: "Too many requests from this IP, please try again later."
+  },
+  standardHeaders: true, // return rate limit info in headers
+  legacyHeaders: false,   // disable `X-RateLimit-*` headers
+});
+
 // --- Postgres ---
 const pool = new Pool({
-  host: process.env.PGHOST',
-  port: Number(process.env.PGPORT),
-  database: process.env.PGDATABASE,
-  user: process.env.PGUSER,
-  password: process.env.PGPASSWORD,
-})
+    connectionString: process.env.DATABASE_URL,
+    max: 10,
+    ssl: { rejectUnauthorized: false }
+});
 await pool.connect().then(c => c.release()) // szybki healthcheck
 
 // --- Okno rejestracji dla drzwi "add" ---
@@ -149,6 +158,7 @@ app.post('/access-check', async (req, res) => {
 })
 
 const PORT = Number(process.env.ACCESS_SVC_PORT || 4001)
+app.use(apiLimiter); 
 app.listen(PORT, () => {
   console.log(`Access service listening on http://127.0.0.1:${PORT}`)
 })
