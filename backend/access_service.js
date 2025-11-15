@@ -10,11 +10,11 @@ app.use(express.json())
 
 // --- Postgres ---
 const pool = new Pool({
-  host: process.env.PGHOST || 'localhost',
-  port: Number(process.env.PGPORT || 5432),
-  database: process.env.PGDATABASE || 'access_mgmt',
-  user: process.env.PGUSER || 'iot_user',
-  password: process.env.PGPASSWORD || '3l3noa$a',
+  host: process.env.PGHOST',
+  port: Number(process.env.PGPORT),
+  database: process.env.PGDATABASE,
+  user: process.env.PGUSER,
+  password: process.env.PGPASSWORD,
 })
 await pool.connect().then(c => c.release()) // szybki healthcheck
 
