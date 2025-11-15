@@ -8,6 +8,7 @@ import AdminRoute from "./components/AdminRoute";
 import Dashboard from "./pages/Dashboard";
 import Users from "./pages/Users";
 import AddUser from "./pages/AddUser";
+import AddUserGroup from "./pages/AddUserGroup"
 import Rooms from "./pages/Rooms";
 import QRCodes from "./pages/QRCodes";
 import Settings from "./pages/Settings";
@@ -34,6 +35,14 @@ export default function App() {
               element={
                 <AdminRoute>
                   <Users />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/add-user-group"
+              element={
+                <AdminRoute>
+                  <AddUserGroup />
                 </AdminRoute>
               }
             />

@@ -152,10 +152,12 @@ export default function Dashboard() {
         )}
 
         {/* Import planu */}
+        {isAdmin && (
         <label className="cursor-pointer bg-gray-700 text-white px-4 py-1 rounded text-sm hover:bg-gray-800 transition">
           Importuj plan piętra
           <input type="file" accept=".svg" className="hidden" onChange={handleUpload} />
         </label>
+        )}
       </div>
 
       {/* Sekcja ostatnich logów - tylko dla administratorów */}
