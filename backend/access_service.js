@@ -9,7 +9,6 @@ dotenv.config()
 
 const app = express()
 app.use(express.json())
-app.use(apiLimiter); 
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -20,6 +19,8 @@ const apiLimiter = rateLimit({
   standardHeaders: true, // return rate limit info in headers
   legacyHeaders: false,   // disable `X-RateLimit-*` headers
 });
+
+app.use(apiLimiter); 
 
 // --- Postgres ---
 const pool = new Pool({
@@ -32,6 +33,7 @@ await pool.connect().then(c => c.release()) // szybki healthcheck
 // --- Okno rejestracji dla drzwi "add" ---
 const ENROLL_WINDOW_MS = (Number(process.env.ENROLL_WINDOW_SEC || 15)) * 1000
 let enrollOpenUntil = 0 // timestamp ms
+let enrollClient = null
 
 function mapTypeToDb(typ) {
   if (!typ) return null
@@ -82,19 +84,19 @@ async function bumpQrUsage(code) {
   await pool.query(sql, [code])
 }
 
-async function enrollCredential(credTypeDb, data) {
-  if (credTypeDb === 'rfid_card' || credTypeDb === 'fingerprint') {
-    const sql = `
-      INSERT INTO access_mgmt.credentials (credential_type, identifier, is_active)
-      VALUES ($1, $2, true)
-      ON CONFLICT (credential_type, identifier)
-      DO UPDATE SET is_active=true, issued_at=now()
-      RETURNING credential_id`
-    const { rows } = await pool.query(sql, [credTypeDb, data])
-    return rows[0]?.credential_id || null
-  }
-  return null // qr_code nie rejestrujemy tą ścieżką
-}
+// async function enrollCredential(credTypeDb, data) {
+//   if (credTypeDb === 'rfid_card' || credTypeDb === 'fingerprint') {
+//     const sql = `
+//       INSERT INTO access_mgmt.credentials (credential_type, identifier, is_active)
+//       VALUES ($1, $2, true)
+//       ON CONFLICT (credential_type, identifier)
+//       DO UPDATE SET is_active=true, issued_at=now()
+//       RETURNING credential_id`
+//     const { rows } = await pool.query(sql, [credTypeDb, data])
+//     return rows[0]?.credential_id || null
+//   }
+//   return null // qr_code nie rejestrujemy tą ścieżką
+// }
 
 // --- API ---
 app.get('/health', async (req, res) => {
@@ -106,8 +108,48 @@ app.get('/health', async (req, res) => {
   })
 })
 
+app.get("/frontend/rfid", (req, res) => {
+  res.set({
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+    "Access-Control-Allow-Origin": "http://localhost:5173",
+  });
+
+  enrollClient = res; // zapisujemy klienta (frontend)
+
+  console.log("Frontend podłączony do enroll-stream");
+
+  req.on("close", () => {
+    console.log("Frontend odłączył się od enroll-stream");
+    enrollClient = null;
+  });
+});
+
+app.get("/frontend/biometric", (req, res) => {
+  res.set({
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+    "Access-Control-Allow-Origin": "http://localhost:5173",
+  });
+
+  enrollClient = res; // zapisujemy klienta (frontend)
+
+  console.log("Frontend podłączony do enroll-stream");
+
+  req.on("close", () => {
+    console.log("Frontend odłączył się od enroll-stream");
+    enrollClient = null;
+  });
+});
+
 // Otwórz okno rejestracji dla "add" (wywołuje Frontend)
 app.post('/enroll/start', (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "http://localhost:5173");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
   enrollOpenUntil = Date.now() + ENROLL_WINDOW_MS
   console.log(`[enroll] window open for ${ENROLL_WINDOW_MS/1000}s until`, new Date(enrollOpenUntil).toISOString())
   res.json({ ok: true, until: enrollOpenUntil })
@@ -131,10 +173,11 @@ app.post('/access-check', async (req, res) => {
     // --- gałąź rejestracji ---
     if (door_id === 'add') {
       if (Date.now() <= enrollOpenUntil) {
-        const credId = await enrollCredential(credTypeDb, String(data))
-        console.log('[enroll] stored credential:', credTypeDb, data, 'id:', credId)
-        // bez statusu (Python nic nie publikuje dla add)
-        return res.json({ ok: true, door_id, credential_id: credId })
+        if (enrollClient) {
+          enrollClient.write(
+          `data: ${JSON.stringify({ type: credTypeDb, data })}\n\n`
+           );
+        }
       } else {
         return res.status(202).json({ ok: false, door_id, reason: 'enroll window closed' })
       }
