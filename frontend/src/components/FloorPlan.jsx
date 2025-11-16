@@ -7,7 +7,7 @@ export default function FloorPlan({ svgMarkup, onIdsDetected, hoveredRoomId, roo
     const svg = wrapperRef.current?.querySelector("svg");
     if (!svg) return;
 
-    // skalowanie wewnątrz SVG — poprawne
+    // Apply responsive scaling styles for the inserted SVG
     svg.style.maxWidth = "100%";
     svg.style.maxHeight = "100%";
     svg.style.width = "100%";
@@ -23,15 +23,13 @@ export default function FloorPlan({ svgMarkup, onIdsDetected, hoveredRoomId, roo
     elements = elements.filter(el => {
       if (!el.id) return false;
 
-      // tylko dla rect: odrzucamy za duże tło
       if (el.tagName === "rect") {
         const w = parseFloat(el.getAttribute("width") || 0);
         const h = parseFloat(el.getAttribute("height") || 0);
 
-        // rect tła zwykle ma rozmiar zbliżony do SVG
         const isBackground =
-          w >= svgWidth * 0.8 &&   // 80% szerokości
-          h >= svgHeight * 0.8;    // 80% wysokości
+          w >= svgWidth * 0.8 &&
+          h >= svgHeight * 0.8;
 
         if (isBackground) return false;
       }
@@ -51,7 +49,6 @@ onIdsDetected?.(ids);
 
     const paths = svg.querySelectorAll("path[id], rect[id]");
 
-    // krok 1: bazowy reset
     paths.forEach((p) => {
       p.style.outline = "none";
       p.style.stroke = "";
@@ -60,7 +57,7 @@ onIdsDetected?.(ids);
       p.style.fillOpacity = "";
     });
 
-    // krok 2: nałóż kolory wg roomStatus
+    // Apply room reservation coloring
     Object.entries(roomStatus || {}).forEach(([key, isFree]) => {
       const pureId = key.split(":")[1] || key;
 
@@ -68,12 +65,12 @@ onIdsDetected?.(ids);
       if (!el) return;
 
       el.style.fill = isFree
-        ? "rgba(16,185,129,0.45)"   // wolny
-        : "rgba(239,68,68,0.45)";   // zajęty
+        ? "rgba(16,185,129,0.45)"
+        : "rgba(239,68,68,0.45)";
       el.style.fillOpacity = "1";
     });
 
-    // krok 3: nałóż hover na koniec (nadpisze kolor dla hoverowanego pokoju)
+    // Apply hover highlight
     if (hoveredRoomId) {
       const el = svg.querySelector(`#${CSS.escape(hoveredRoomId)}`);
       if (el) {

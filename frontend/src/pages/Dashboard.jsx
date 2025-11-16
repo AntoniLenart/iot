@@ -69,21 +69,17 @@ export default function Dashboard() {
   };
 
    useEffect(() => {
-    // Wczytaj plany z localStorage
     const savedPlans = JSON.parse(localStorage.getItem("floor_plans") || "[]");
 
     const savedActive = localStorage.getItem("active_floor_id");
     const fallback = savedPlans[0]?.id || null;
     const idToUse = savedActive || fallback;
 
-    // Ustawiamy WSZYSTKO na raz
     setPlans(savedPlans);
     setActiveId(idToUse);
     setSvgMarkup(savedPlans.find(p => p.id === idToUse)?.svg || null);
 
-    // Nasłuchuj zmian w localStorage
     const handleStorageChange = () => {
-      // aktualizuj plany
       const updatedPlans = JSON.parse(localStorage.getItem("floor_plans") || "[]");
       setPlans(updatedPlans);
 
@@ -108,7 +104,6 @@ export default function Dashboard() {
     setRoomStatus(saved);
   }, []);
 
-  // Zmiana piętra (dropdown)
   const handleFloorChange = (id) => {
     setActiveId(id);
     localStorage.setItem("active_floor_id", id);
@@ -118,7 +113,7 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col">
-      {/* Górny pasek */}
+      {/* Top bar */}
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-semibold">Dashboard</h2>
 
@@ -141,7 +136,7 @@ export default function Dashboard() {
       </div>
 
 
-      {/* Mapa sal */}
+      {/* Floor plan preview */}
       <div
         className="bg-white p-2 rounded-lg shadow mb-4 overflow-hidden select-none flex justify-center items-center mx-auto relative"
         style={{
@@ -151,7 +146,7 @@ export default function Dashboard() {
           minHeight: "350px",
         }}
       >
-        {/*BLOKADA WCZESNEGO RENDERU */}
+        {/*Early render lock */}
         {!plans.length || !activeId ? (
           <p className="text-gray-500">Ładowanie mapy...</p>
         ) : svgMarkup ? (
@@ -166,7 +161,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Sekcja ostatnich logów - tylko dla administratorów */}
+      {/* Latest Logs Section - For Admins Only */}
       {isAdmin && (
         <div className="bg-white p-2 rounded-lg shadow">
           <h3 className="text-xl font-semibold mb-2">Ostatnie logi</h3>

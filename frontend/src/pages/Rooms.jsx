@@ -15,25 +15,25 @@ export default function Rooms() {
   const [roomStatus, setRoomStatus] = useState({});
   const activeFloorId = localStorage.getItem("active_floor_id");
 
+  // Load floor plans on mount
   useEffect(() => {
-  // wczytaj wszystkie zapisane plany
   const savedPlans = JSON.parse(localStorage.getItem("floor_plans") || "[]");
   const activeId = localStorage.getItem("active_floor_id");
 
   if (savedPlans.length > 0) {
-    // znajdź aktywny plan
+
     const activePlan =
       savedPlans.find((p) => p.id === activeId) || savedPlans[0];
     if (activePlan) setSvgMarkup(activePlan.svg);
   }
 }, []);
 
+  // Sync room names and reservations with localStorage
   useEffect(() => {
     const saved = JSON.parse(localStorage.getItem("room_names") || "{}");
     setRoomNames(saved);
   }, []);
 
-  // Zapisuj nazwy pokojów, gdy się zmienią
   useEffect(() => {
     localStorage.setItem("room_names", JSON.stringify(roomNames));
   }, [roomNames]);
@@ -47,14 +47,13 @@ export default function Rooms() {
     localStorage.setItem("room_reservations", JSON.stringify(roomStatus));
   }, [roomStatus]);
 
+  // Handle uploading multiple SVG floor plans
   const handleUploadMany = async (e) => {
   const files = Array.from(e.target.files || []);
   if (!files.length) return;
 
-  // wczytaj istniejące plany
   const existing = JSON.parse(localStorage.getItem("floor_plans") || "[]");
 
-  // wczytaj wszystkie pliki równolegle
   const loaded = await Promise.all(
     files.map(async (file) => {
       const svg = await file.text();
@@ -75,6 +74,7 @@ export default function Rooms() {
   window.dispatchEvent(new Event("floorplans-updated"));
 };
 
+  // Remove currently active plan
   const handleResetPlan = () => {
   const activeId = localStorage.getItem("active_floor_id");
   const savedPlans = JSON.parse(localStorage.getItem("floor_plans") || "[]");
@@ -91,14 +91,13 @@ export default function Rooms() {
     localStorage.removeItem("active_floor_id");
   }
 
-  // nowy event, działa natychmiast w tym samym oknie
   window.dispatchEvent(new Event("floorplans-updated"));
 };
 
   return (
   <div className="p-4 flex flex-col gap-6 items-start">
     <div className="flex flex-row justify-center gap-6 items-start w-full">
-    {/* Mapa sal */}
+    {/* Left side — floor plan preview */}
 <div
   className="bg-white p-2 rounded-lg shadow overflow-hidden select-none flex justify-center items-center"
   style={{
@@ -122,7 +121,7 @@ export default function Rooms() {
   )}
 </div>
 
-    {/* PRAWA STRONA — PRZYCISKI + LISTA PLANÓW */}
+    {/* Right side — room actions + floor list */}
     <div className="w-[400px] flex flex-col justify-between h-[65vh]">
 
       <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-2">
@@ -143,31 +142,24 @@ export default function Rooms() {
         }`}
       >
         {roomStatus[`${activeFloorId}:${id}`]
-          ? `Zarezerwuj pokój ${roomNames[id] || id}`   // TRUE → pokój wolny → można usunąć rezerwację
+          ? `Zarezerwuj pokój ${roomNames[id] || id}`
           : `Usuń rezerwację ${roomNames[id] || id}`}
       </button>
         )
     ))}
     </div>
 
-      {/* LISTA PLANÓW DO WYBORU */}
     <div className="pt-3">
       <FloorList setSvgMarkup={setSvgMarkup} />
     </div>
   </div>
 
-  {/*Lista znalezionych pokojow w danym pietrze */}
+  {/* Admin section — room list and name editing */}
   {isAdmin && svgMarkup && (
   <div className="w-1/2 mt-10 p-5 bg-white rounded shadow border text-sm">
+    <h2 className="text-2xl font-bold mb-4 text-gray-900">Sekcja dla administratora</h2>
+    <h3 className="text-lg font-semibold mb-3 text-gray-800">Przydział pomieszczeń</h3>
 
-    {/* ŁADNY, ELEGANCKI NAGŁÓWEK */}
-    <h2 className="text-2xl font-bold mb-4 text-gray-900">
-      Sekcja dla administratora
-    </h2>
-
-    <h3 className="text-lg font-semibold mb-3 text-gray-800">
-      Przydział pomieszczeń
-    </h3>
   {svgIds.length > 0 ? (
     <div className="flex flex-col gap-3">
       {svgIds.map((id, index) => (
@@ -202,6 +194,7 @@ export default function Rooms() {
     </div>
   )}
 
+      {/* Popup for editing room names */}
       {editingRoomId && (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
         <div className="bg-white p-6 rounded-lg shadow-lg w-[320px]">
@@ -252,7 +245,7 @@ export default function Rooms() {
 
 
   </div>
-    {/* DÓŁ STRONY — PRZYCISKI POD CAŁOŚCIĄ */}
+  {/* Bottom action buttons (import/delete) */}
   <div className="flex gap-3 mt-4">
     {svgMarkup && (
       <button
@@ -280,11 +273,11 @@ export default function Rooms() {
 
 }
 
+// FloorList Component — displays all saved floor plans
 function FloorList({ setSvgMarkup }) {
   const [plans, setPlans] = useState([]);
   const [activeId, setActiveId] = useState(localStorage.getItem("active_floor_id"));
 
-  // Funkcja pomocnicza do wczytania aktualnej listy
   const refreshPlans = () => {
     const saved = JSON.parse(localStorage.getItem("floor_plans") || "[]");
     setPlans(saved);
@@ -295,11 +288,9 @@ function FloorList({ setSvgMarkup }) {
   useEffect(() => {
     refreshPlans();
 
-    // reaguj na zmiany w localStorage (np. po usunięciu planu)
     const handleStorageChange = () => refreshPlans();
     window.addEventListener("storage", handleStorageChange);
 
-    // dodatkowy event wewnętrzny do odświeżenia w tym samym oknie
     window.addEventListener("floorplans-updated", handleStorageChange);
 
     return () => {
@@ -319,6 +310,7 @@ function FloorList({ setSvgMarkup }) {
   return (
     <div className="mt-3 border-t pt-3">
       <h3 className="font-semibold text-sm mb-2">Dostępne plany:</h3>
+      {/* Scrollable list of plans */}
       <div className="flex flex-col gap-2 max-h-[200px] overflow-y-auto">
         {plans.map((p) => (
           <button
