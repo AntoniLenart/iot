@@ -96,10 +96,43 @@ export default function UserGroupsPage() {
     }
   };
 
-  const handleRoomSubmit = (e) => {
+  const handleRoomSubmit = async (e) => {
     e.preventDefault();
-    // TODO: logika dodawania pokoju
+    setLoading(true);
+    setMessage("");
+
+    // try {
+    //   // First, create a credential for RFID
+    //   const groupResponse = await fetch("http://localhost:4000/api/v1/user_groups/create", {
+    //     method: "POST",
+    //     headers: { "Content-Type": "application/json" },
+    //     body: JSON.stringify({
+    //       name: groupFormData.name,
+    //       description: groupFormData.description
+    //     }),
+    //   });
+
+    //   if (!groupResponse.ok) {
+    //     const errorData = await groupResponse.json();
+    //     throw new Error(errorData.error || "Nie udało się utworzyć poświadczenia");
+    //   }
+
+    //   const data = await groupResponse.json();
+    //   setMessage("Grupa dostępowa utworzona pomyślnie!");
+    //   setGroupFormData({
+    //     name: "",
+    //     description: ""
+    //   })
+
+    //   setRefreshTrigger(prev => prev + 1);
+
+    // } catch (error) {
+    //   setMessage(`Błąd: ${error.message}`);
+    // } finally {
+    //   setLoading(false);
+    // }
   };
+  
 
   if (loading) return <div>Loading...</div>;
   if (error) return <div>Error: {error}</div>;
@@ -198,16 +231,21 @@ export default function UserGroupsPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Nazwa pokoju *</label>
-            <input
-              type="text"
-              name="room_name"
-              value={roomFormData.room_name}
+            <label className="block text-sm font-medium text-gray-700">Wybierz pokój *</label>
+            <select
+              name="room_id"
+              value={roomFormData.room_id}
               onChange={handleRoomChange}
               required
-              placeholder="Wprowadź nazwę pokoju"
               className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500"
-            />
+            >
+              <option value="">Wybierz pokój</option>
+              {rooms.map((r) => (
+                <option key={r.room_id} value={r.room_id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           <button

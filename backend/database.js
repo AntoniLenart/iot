@@ -60,7 +60,7 @@ router.post('/users/create', ensureJson, async (req, res) => {
 
     // REGEX for first/last name, phone number and email verification
     const emailRegex = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
-    const phoneRegex = /^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$/;
+    const phoneRegex = /^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{3,6}$/;
     const nameRegex = /^[A-Za-zÀ-ÿ\-]{2,100}$/;
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,100}$/;
 
@@ -123,7 +123,7 @@ router.patch('/users/update', ensureJson, async (req, res) => {
     if (!user_id) return res.status(400).json({ error: 'user_id is required' });
 
     const emailRegex = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
-    const phoneRegex = /^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$/;
+    const phoneRegex = /^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{3,6}$/;
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,100}$/;
 
     if (email && !emailRegex.test(email)) {
@@ -140,6 +140,8 @@ router.patch('/users/update', ensureJson, async (req, res) => {
 
     try {
         if (password) fields.password_hash = await hashPassword(password);
+        fields.email = email;
+        fields.phone = phone;
         const allowed = ['username','first_name','last_name','email','phone','user_type','department','employee_number','is_active','metadata','password_hash'];
         const sets = [];
         const values = [];
@@ -154,6 +156,8 @@ router.patch('/users/update', ensureJson, async (req, res) => {
         if (sets.length === 0) return res.status(400).json({ error: 'no updatable fields provided' });
 
         sets.push(`updated_at = now()`);
+
+        console.log(sets)
 
         const sql = `UPDATE access_mgmt.users SET ${sets.join(', ')} WHERE user_id = $${idx} RETURNING *`;
         values.push(user_id);
