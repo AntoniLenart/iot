@@ -13,7 +13,6 @@ import Rooms from "./pages/Rooms";
 import QRCodes from "./pages/QRCodes";
 import Settings from "./pages/Settings";
 import Logs from "./pages/Logs";
-
 import Login from "./pages/Login";
 
 export default function App() {
