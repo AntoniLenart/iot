@@ -97,9 +97,9 @@ if __name__ == "__main__":
 
     
         while True:
-            r_uid = rfid.readCard()
-            f_uid = fingerprint.get_eigenvalues()
+            f_uid = fingerprint.get_eigenvalues(wait=0.1)
             s_uid = scanner.qr_event.wait(0.1)
+            r_uid = rfid.readCard()
 
             if r_uid:
                 json_request = createJSONRequest("rfid", r_uid)

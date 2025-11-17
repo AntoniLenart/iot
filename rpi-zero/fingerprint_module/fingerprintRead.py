@@ -193,12 +193,13 @@ class FingerprintModule:
         GPIO.cleanup()
         print("Fingerprint module reset (woken from sleep).")
 
-    def get_eigenvalues(self) -> bytes:
+    def get_eigenvalues(self, wait=0.1) -> bytes:
         """
         CMD 0x23 Upload acquired images and extracted eigenvalue.
         Manual: eigenvalues data length Len-3 is fixed 193 bytes.
         We'll return raw eigenvalue payload (193 bytes expected).
         """
+        time.sleep(wait)
         cmd, params, data = self._receive_response(expect_data=True)
         if data is None:
            return None
