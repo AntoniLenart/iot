@@ -9,6 +9,8 @@ export default function Users() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [isReadingBiometric, setIsReadingBiometric] = useState(false);
+  const [isReadingRfid, setIsReadingRfid] = useState(false);
 
   // Fetch users from the database on component mount
   const fetchUsers = async () => {
@@ -62,6 +64,7 @@ export default function Users() {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to update user');
       }
+
       await fetchUsers(); // Refresh list
       closeUserModal();
     } catch (err) {
@@ -95,6 +98,92 @@ export default function Users() {
 
   if (loading) return <div>Loading users...</div>;
   if (error) return <div>Error: {error}</div>;
+
+  const handleRfidRead = async () => {
+    setIsReadingRfid(true);
+
+    try {
+      await fetch("http://localhost:4001/enroll/start", {
+        method: "POST",
+      });
+
+      const eventSource = new EventSource("http://localhost:4001/frontend/rfid");
+
+      const timeout = setTimeout(() => {
+        console.log("Timeout - no RFID data received");
+        eventSource.close();
+        setIsReadingRfid(false);
+      }, 30000);
+
+      eventSource.onmessage = (event) => {
+        clearTimeout(timeout);
+
+        const rfid = JSON.parse(event.data);
+        console.log("Received RFID:", rfid);
+
+        // Update the input value
+        setSelectedUser((prev) => ({
+          ...prev,
+          rfid: rfid.data || "",
+        }));
+
+        eventSource.close();
+        setIsReadingRfid(false);
+      };
+
+      eventSource.onerror = () => {
+        clearTimeout(timeout);
+        eventSource.close();
+        setIsReadingRfid(false);
+      };
+    } catch (err) {
+      console.error("Error starting enroll:", err);
+      setIsReadingRfid(false);
+    }
+  }
+
+   const handleBiometricRead = async() => {
+    setIsReadingBiometric(true)
+
+    try {
+      await fetch("http://localhost:4001/enroll/start", {
+        method: "POST",
+      });
+
+        const eventSource = new EventSource("http://localhost:4001/frontend/biometric");
+
+        const timeout = setTimeout(() => {
+            console.log("Timeout - no biometric data received")
+            eventSource.close()
+            setIsReadingBiometric(false)
+        }, 30000)
+
+        eventSource.onmessage = (event) => {
+          clearTimeout(timeout)
+
+          const biometry = JSON.parse(event.data)
+          console.log(biometry.data)
+
+          setSelectedUser((prev) => ({
+          ...prev,
+          biometricId: biometry.data || "", // assuming your endpoint sends { rfid: "..." }
+          }));
+
+          eventSource.close();
+          setIsReadingBiometric(false);
+        }
+
+        eventSource.onerror = () => {
+          clearTimeout(timeout);
+          eventSource.close();
+          setIsReadingBiometric(false);
+      };
+    } catch (err) {
+      console.error("Error starting enroll:", err);
+      setIsReadingBiometric(false);
+    }
+    
+  }
 
   return (
     <div className="p-6">
@@ -153,6 +242,8 @@ export default function Users() {
         </table>
       </div>
 
+
+
       {/* User modal edit */}
       {selectedUser && (
         <div
@@ -190,9 +281,10 @@ export default function Users() {
                 <input
                   type="email"
                   value={selectedUser.email || ""}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    console.log(e.target.value)
                     setSelectedUser({ ...selectedUser, email: e.target.value })
-                  }
+                  }}
                   className="w-full border rounded-lg p-2 text-center"
                 />
               </div>
@@ -209,6 +301,13 @@ export default function Users() {
                   className="w-full border rounded-lg p-2 text-center"
                 />
               </div>
+              <button
+                  type="button"
+                  onClick={handleRfidRead}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  {isReadingRfid ? "Czytam..." : "Odczytaj"}
+              </button>
 
               <div>
                 <label className="block text-sm text-gray-700 mb-1">
@@ -221,13 +320,21 @@ export default function Users() {
                     setSelectedUser({
                       ...selectedUser,
                       biometricId: e.target.value,
-                      biometrics: !!e.target.value,
+                     
                     })
                   }
                   placeholder="Wpisz identyfikator biometryczny"
                   className="w-full border rounded-lg p-2 text-center"
                 />
               </div>
+
+              <button
+                  type="button"
+                  onClick={handleBiometricRead}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                {isReadingBiometric ? "Czytam..." : "Odczytaj"}
+              </button>
 
               <div>
                 <label className="block text-sm text-gray-700 mb-1">Rola</label>
