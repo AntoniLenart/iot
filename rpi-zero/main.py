@@ -97,10 +97,10 @@ if __name__ == "__main__":
 
     
         while True:
-            f_uid = fingerprint.get_eigenvalues(wait=0.1)
-            s_uid = scanner.qr_event.wait(0.1)
+            f_uid = fingerprint.get_eigenvalues()
+            s_uid = scanner.qr_event.wait(0.001)
             r_uid = rfid.readCard()
-
+            
             if r_uid:
                 json_request = createJSONRequest("rfid", r_uid)
                 logger.debug(f"Json request: {json_request}")
@@ -215,7 +215,7 @@ if __name__ == "__main__":
                 scanner.start_background_scan()
                 fingerprint.new_scan()
 
-            time.sleep(1)
+            time.sleep(0.001)
 
     except Exception:
         fingerprint.stop_scan()
