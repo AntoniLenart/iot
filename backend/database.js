@@ -184,6 +184,19 @@ router.get('/users/get', async (req, res) => {
     }
 });
 
+router.get('/users/getByName', async (req, res) => {
+    const { first_name, last_name } = req.query;
+    if (!first_name || !last_name) return res.status(400).json({ error: 'first and last name are required' });
+    try {
+        const result = await pool.query('SELECT user_id FROM access_mgmt.users WHERE first_name = $1 AND last_name = $2', [first_name, last_name]);
+        if (result.rowCount === 0) return res.status(404).json({ error: 'user not found' });
+        res.status(200).json({ user: result.rows[0] });
+    } catch (err) {
+        console.error('DB error:', err);
+        res.status(500).json({ error: 'database error' });
+    }
+});
+
 // ---- DEVICES ----
 router.get('/devices/list', async (req, res) => {
     try {
@@ -326,6 +339,19 @@ router.get('/credentials/get', async (req, res) => {
     if (!credential_id) return res.status(400).json({ error: 'credential_id is required' });
     try {
         const result = await pool.query('SELECT * FROM access_mgmt.credentials WHERE credential_id = $1', [credential_id]);
+        if (result.rowCount === 0) return res.status(404).json({ error: 'credential not found' });
+        res.status(200).json({ credential: result.rows[0] });
+    } catch (err) {
+        console.error('DB error:', err);
+        res.status(500).json({ error: 'database error' });
+    }
+});
+
+router.get('/credentials/getByUserId', async (req, res) => {
+    const { user_id, type } = req.query;
+    if (!user_id || !type) return res.status(400).json({ error: 'user_id and type is required' });
+    try {
+        const result = await pool.query('SELECT identifier FROM access_mgmt.credentials WHERE user_id = $1 AND credential_type = $2', [user_id, type]);
         if (result.rowCount === 0) return res.status(404).json({ error: 'credential not found' });
         res.status(200).json({ credential: result.rows[0] });
     } catch (err) {
