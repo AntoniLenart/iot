@@ -9,14 +9,28 @@ export default function Rooms() {
   const { user } = useAuth();
   const isAdmin = user?.user_type === "admin";
 
-  const [svgMarkup, setSvgMarkup] = useState(null);
   const [svgIds, setSvgIds] = useState([]);
   const [hoveredRoomId, setHoveredRoomId] = useState(null);
-  const [roomNames, setRoomNames] = useState({});
+
+  const [roomNames, setRoomNames] = useState(() =>
+    JSON.parse(localStorage.getItem("room_names") || "{}")
+  );
   const [editingRoomId, setEditingRoomId] = useState(null);
   const [editingName, setEditingName] = useState("");
-  const [roomStatus, setRoomStatus] = useState({});
-  const activeFloorId = localStorage.getItem("active_floor_id");
+  const [roomStatus, setRoomStatus] = useState(() =>
+    JSON.parse(localStorage.getItem("room_reservations") || "{}")
+  );
+  const [activeFloorId, setActiveFloorId] = useState(() =>
+    localStorage.getItem("active_floor_id")
+  );
+
+  const [svgMarkup, setSvgMarkup] = useState(() => {
+    const savedPlans = JSON.parse(localStorage.getItem("floor_plans") || "[]");
+    const activeId = localStorage.getItem("active_floor_id");
+    const activePlan = savedPlans.find((p) => p.id === activeId) || savedPlans[0];
+    return activePlan ? activePlan.svg : null;
+  });
+
 
   // Load floor plans on mount
   useEffect(() => {
@@ -31,71 +45,70 @@ export default function Rooms() {
   }
 }, []);
 
-  // Sync room names and reservations with localStorage
-  useEffect(() => {
-    const saved = JSON.parse(localStorage.getItem("room_names") || "{}");
-    setRoomNames(saved);
-  }, []);
-
   useEffect(() => {
     localStorage.setItem("room_names", JSON.stringify(roomNames));
   }, [roomNames]);
 
   useEffect(() => {
-    const saved = JSON.parse(localStorage.getItem("room_reservations") || "{}");
-    setRoomStatus(saved);
-  }, []);
-
-  useEffect(() => {
     localStorage.setItem("room_reservations", JSON.stringify(roomStatus));
   }, [roomStatus]);
 
+
   // Handle uploading multiple SVG floor plans
   const handleUploadMany = async (e) => {
-  const files = Array.from(e.target.files || []);
-  if (!files.length) return;
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
 
-  const existing = JSON.parse(localStorage.getItem("floor_plans") || "[]");
+    const existing = JSON.parse(localStorage.getItem("floor_plans") || "[]");
 
-  const loaded = await Promise.all(
-    files.map(async (file) => {
-      const svg = await file.text();
-      return {
-        id: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        name: file.name,
-        svg,
-      };
-    })
-  );
+    const loaded = await Promise.all(
+      files.map(async (file) => {
+        const svg = await file.text();
+        return {
+          id: `${file.name}-${Date.now()}-${Math.random()
+            .toString(36)
+            .slice(2, 8)}`,
+          name: file.name,
+          svg,
+        };
+      })
+    );
 
-  const merged = [...existing, ...loaded];
-  localStorage.setItem("floor_plans", JSON.stringify(merged));
+    const merged = [...existing, ...loaded];
+    localStorage.setItem("floor_plans", JSON.stringify(merged));
 
-  localStorage.setItem("active_floor_id", merged[merged.length - loaded.length].id);
+    const newActive = merged[merged.length - loaded.length].id;
+    localStorage.setItem("active_floor_id", newActive);
 
-  setSvgMarkup(loaded[0].svg);
-  window.dispatchEvent(new Event("floorplans-updated"));
+    setSvgMarkup(loaded[0].svg);
+    setActiveFloorId(newActive);
+
+    window.dispatchEvent(new Event("floorplans-updated"));
+
 };
 
   // Remove currently active plan
   const handleResetPlan = () => {
-  const activeId = localStorage.getItem("active_floor_id");
-  const savedPlans = JSON.parse(localStorage.getItem("floor_plans") || "[]");
-  const updatedPlans = savedPlans.filter((p) => p.id !== activeId);
+    const activeId = localStorage.getItem("active_floor_id");
+    const savedPlans = JSON.parse(localStorage.getItem("floor_plans") || "[]");
+    const updatedPlans = savedPlans.filter((p) => p.id !== activeId);
 
-  localStorage.setItem("floor_plans", JSON.stringify(updatedPlans));
+    localStorage.setItem("floor_plans", JSON.stringify(updatedPlans));
 
-  if (updatedPlans.length > 0) {
-    const next = updatedPlans[0];
-    setSvgMarkup(next.svg);
-    localStorage.setItem("active_floor_id", next.id);
-  } else {
-    setSvgMarkup(null);
-    localStorage.removeItem("active_floor_id");
-  }
+    if (updatedPlans.length > 0) {
+      const next = updatedPlans[0];
+      setSvgMarkup(next.svg);
+      localStorage.setItem("active_floor_id", next.id);
+      setActiveFloorId(next.id);
+    } else {
+      setSvgMarkup(null);
+      localStorage.removeItem("active_floor_id");
+      setActiveFloorId(null);
+    }
 
-  window.dispatchEvent(new Event("floorplans-updated"));
-};
+    window.dispatchEvent(new Event("floorplans-updated"));
+  };
+
 
   return (
   <div className="p-4 flex flex-col gap-6 items-start">
@@ -113,10 +126,12 @@ export default function Rooms() {
   {svgMarkup ? (
     <div className="w-full h-full flex justify-center items-center svg-wrapper">
       <FloorPlan
+    key={activeFloorId + ":" + (svgMarkup ? svgMarkup.length : 0)}
     svgMarkup={svgMarkup}
     onIdsDetected={setSvgIds}
     hoveredRoomId={hoveredRoomId}
     roomStatus={roomStatus}
+    activeFloorId={activeFloorId}
 />
     </div>
   ) : (
@@ -128,32 +143,63 @@ export default function Rooms() {
     <div className="w-[400px] flex flex-col justify-between h-[65vh]">
 
       <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-2">
-      {svgIds.map(id => (
-        roomNames[id] && (
-      <button
-        key={id}
-        onClick={() =>
-          setRoomStatus(prev => ({
-            ...prev,
-            [`${activeFloorId}:${id}`]: !prev[`${activeFloorId}:${id}`]
-          }))
-        }
-        className={`px-3 py-2 text-sm rounded font-medium transition ${
-          roomStatus[`${activeFloorId}:${id}`]
-            ? "bg-green-600 hover:bg-green-700 text-white"
-            : "bg-red-600 hover:bg-red-700 text-white"
-        }`}
-      >
-        {roomStatus[`${activeFloorId}:${id}`]
-          ? `Zarezerwuj pokój ${roomNames[id] || id}`
-          : `Usuń rezerwację ${roomNames[id] || id}`}
-      </button>
-        )
-    ))}
+      {svgIds.map(id => {
+        const key = `${activeFloorId}:${id}`;
+        const anyBusy = Object.values(roomStatus).includes("busy");
+        const isThisBusy = roomStatus[key] === "busy";
+
+        return roomNames[key] && (
+          <button
+            key={id}
+            disabled={anyBusy && !isThisBusy}
+            onClick={() => {
+              setRoomStatus(prev => {
+                const updated = { ...prev };
+                const isBusy = prev[key] === "busy";
+
+                // Jeśli klikamy zajęty → zwalniamy go
+                if (isBusy) {
+                  updated[key] = "free";
+                  localStorage.removeItem("current_reservation");
+                  window.dispatchEvent(new Event("room-reservations-updated"));
+                  return updated;
+                }
+
+                // Jeśli klikamy wolny → ustawiamy go jako jedyny zajęty
+                updated[key] = "busy";
+
+                // Zapisujemy dane dla backendu
+                localStorage.setItem(
+                  "current_reservation",
+                  JSON.stringify({
+                    floor_id: activeFloorId,
+                    room_id: id,
+                    room_name: roomNames[key],
+                    timestamp: new Date().toISOString()
+                  })
+                );
+                window.dispatchEvent(new Event("room-reservations-updated"));
+                return updated;
+              });
+            }}
+            className={`px-3 py-2 text-sm rounded font-medium transition
+              ${roomStatus[key] === "free"
+                ? "bg-green-600 hover:bg-green-700 text-white"
+                : "bg-red-600 hover:bg-red-700 text-white"
+              }
+              ${anyBusy && !isThisBusy ? "opacity-50 cursor-not-allowed" : ""}
+            `}
+          >
+            {roomStatus[key] === "free"
+              ? `Zarezerwuj pokój ${roomNames[key]}`
+              : `Usuń rezerwację ${roomNames[key]}`}
+          </button>
+        );
+      })}
     </div>
 
     <div className="pt-3">
-      <FloorList setSvgMarkup={setSvgMarkup} />
+      <FloorList setSvgMarkup={setSvgMarkup} setActiveFloorId={setActiveFloorId}/>
     </div>
   </div>
 
@@ -165,7 +211,10 @@ export default function Rooms() {
 
   {svgIds.length > 0 ? (
     <div className="flex flex-col gap-3">
-      {svgIds.map((id, index) => (
+      {[...svgIds].sort().map((id, index) => {
+      const key = `${activeFloorId}:${id}`;
+
+      return (
         <div
           key={id}
           className="p-3 bg-white rounded border flex flex-col gap-1"
@@ -173,7 +222,7 @@ export default function Rooms() {
           onMouseLeave={() => setHoveredRoomId(null)}
           onClick={() => {
             setEditingRoomId(id);
-            setEditingName(roomNames[id] || "");
+            setEditingName(roomNames[key] || "");
           }}
         >
           <span className="font-medium">
@@ -181,13 +230,14 @@ export default function Rooms() {
             <span className="text-blue-600">{id}</span>
           </span>
 
-          {roomNames[id] && (
+          {roomNames[key] && (
             <span className="text-sm text-green-700">
-              Nazwa: <b>{roomNames[id]}</b>
+              Nazwa: <b>{roomNames[key]}</b>
             </span>
           )}
-            </div>
-          ))}
+        </div>
+      );
+    })}
         </div>
       ) : (
         <p className="text-gray-500 italic">
@@ -224,23 +274,40 @@ export default function Rooms() {
             </button>
 
             <button
-              className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
-              onClick={() => {
+            className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
+            onClick={() => {
+              const key = `${activeFloorId}:${editingRoomId}`;
+
+              if (!editingName.trim()) {
+                setRoomNames(prev => {
+                  const updated = { ...prev };
+                  delete updated[key];
+                  return updated;
+                });
+
+                setRoomStatus(prev => {
+                  const updated = { ...prev };
+                  delete updated[key];
+                  return updated;
+                });
+
+              } else {
                 setRoomNames(prev => ({
                   ...prev,
-                  [editingRoomId]: editingName
+                  [key]: editingName
                 }));
 
                 setRoomStatus(prev => ({
                   ...prev,
-                  [`${activeFloorId}:${editingRoomId}`]: true
+                  [key]: "free"
                 }));
+              }
 
-                setEditingRoomId(null);
-              }}
-            >
-              Zapisz
-            </button>
+              setEditingRoomId(null);
+            }}
+          >
+            Zapisz
+          </button>
           </div>
         </div>
       </div>
@@ -249,6 +316,7 @@ export default function Rooms() {
 
   </div>
   {/* Bottom action buttons (import/delete) */}
+  {isAdmin && (
   <div className="flex gap-3 mt-4">
     {svgMarkup && (
       <button
@@ -270,22 +338,22 @@ export default function Rooms() {
       />
     </label>
   </div>
-
+)}
   </div>
 );
 
 }
 
 // FloorList Component — displays all saved floor plans
-function FloorList({ setSvgMarkup }) {
+function FloorList({ setSvgMarkup, setActiveFloorId }) {
   const [plans, setPlans] = useState([]);
-  const [activeId, setActiveId] = useState(localStorage.getItem("active_floor_id"));
+  const activeId = localStorage.getItem("active_floor_id");
+
+  const stripExt = (name) => name.replace(/\.svg$/i, "");
 
   const refreshPlans = () => {
     const saved = JSON.parse(localStorage.getItem("floor_plans") || "[]");
     setPlans(saved);
-    const currentId = localStorage.getItem("active_floor_id");
-    setActiveId(currentId);
   };
 
   useEffect(() => {
@@ -303,9 +371,10 @@ function FloorList({ setSvgMarkup }) {
   }, []);
 
   const handleSelect = (plan) => {
-    setActiveId(plan.id);
-    setSvgMarkup(plan.svg);
     localStorage.setItem("active_floor_id", plan.id);
+    setActiveFloorId(plan.id);
+    setSvgMarkup(plan.svg);
+    window.dispatchEvent(new Event("floorplans-updated"));
   };
 
   if (!plans.length) return null;
@@ -324,9 +393,9 @@ function FloorList({ setSvgMarkup }) {
                 ? "bg-blue-600 text-white"
                 : "bg-gray-200 hover:bg-gray-300"
             }`}
-            title={p.name}
+            title={stripExt(p.name)}
           >
-            {p.name}
+            {stripExt(p.name)}
           </button>
         ))}
       </div>

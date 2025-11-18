@@ -107,6 +107,21 @@ export default function Dashboard() {
     setRoomStatus(saved);
   }, []);
 
+  useEffect(() => {
+    const update = () => {
+      const saved = JSON.parse(localStorage.getItem("room_reservations") || "{}");
+      setRoomStatus(saved);
+    };
+
+    window.addEventListener("storage", update);
+    window.addEventListener("room-reservations-updated", update);
+
+    return () => {
+      window.removeEventListener("storage", update);
+      window.removeEventListener("room-reservations-updated", update);
+    };
+  }, []);
+
   const handleFloorChange = (id) => {
     setActiveId(id);
     localStorage.setItem("active_floor_id", id);
@@ -130,7 +145,7 @@ export default function Dashboard() {
             >
               {plans.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name}
+                  {p.name.replace(/\.svg$/i, "")}
                 </option>
               ))}
             </select>
@@ -157,7 +172,8 @@ export default function Dashboard() {
           <FloorPlan svgMarkup={svgMarkup} 
           onIdsDetected={setSvgIds}
           hoveredRoomId={hoveredRoomId}
-          roomStatus={roomStatus} />
+          roomStatus={roomStatus}
+          activeFloorId={activeId} />
           </div>
         ) : (
           <p className="text-gray-500">Brak wczytanego planu piętra</p>
@@ -168,9 +184,10 @@ export default function Dashboard() {
       {isAdmin && (
         <div className="bg-white p-2 rounded-lg shadow">
           <h3 className="text-xl font-semibold mb-2">Ostatnie logi</h3>
+
           <ul className="list-disc list-inside space-y-2">
             {logs.length > 0 ? (
-              logs.map(log => (
+              logs.slice(0, 4).map(log => (
                 <li key={log.audit_id}>{getFriendlyLog(log)}</li>
               ))
             ) : (
