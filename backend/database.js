@@ -184,6 +184,19 @@ router.get('/users/get', async (req, res) => {
     }
 });
 
+router.get('/users/getByName', async (req, res) => {
+    const { first_name, last_name } = req.query;
+    if (!first_name || !last_name) return res.status(400).json({ error: 'first and last name are required' });
+    try {
+        const result = await pool.query('SELECT user_id FROM access_mgmt.users WHERE first_name = $1 AND last_name = $2', [first_name, last_name]);
+        if (result.rowCount === 0) return res.status(404).json({ error: 'user not found' });
+        res.status(200).json({ user: result.rows[0] });
+    } catch (err) {
+        console.error('DB error:', err);
+        res.status(500).json({ error: 'database error' });
+    }
+});
+
 // ---- DEVICES ----
 router.get('/devices/list', async (req, res) => {
     try {
@@ -326,6 +339,19 @@ router.get('/credentials/get', async (req, res) => {
     if (!credential_id) return res.status(400).json({ error: 'credential_id is required' });
     try {
         const result = await pool.query('SELECT * FROM access_mgmt.credentials WHERE credential_id = $1', [credential_id]);
+        if (result.rowCount === 0) return res.status(404).json({ error: 'credential not found' });
+        res.status(200).json({ credential: result.rows[0] });
+    } catch (err) {
+        console.error('DB error:', err);
+        res.status(500).json({ error: 'database error' });
+    }
+});
+
+router.get('/credentials/getByUserId', async (req, res) => {
+    const { user_id, type } = req.query;
+    if (!user_id || !type) return res.status(400).json({ error: 'user_id and type is required' });
+    try {
+        const result = await pool.query('SELECT identifier, credential_id FROM access_mgmt.credentials WHERE user_id = $1 AND credential_type = $2', [user_id, type]);
         if (result.rowCount === 0) return res.status(404).json({ error: 'credential not found' });
         res.status(200).json({ credential: result.rows[0] });
     } catch (err) {
@@ -945,11 +971,11 @@ router.get('/access_policies/get', async (req, res) => {
 });
 
 router.post('/access_policies/create', ensureJson, async (req, res) => {
-    const { name, description, default_action, is_active } = req.body;
+    const { name, description, action, is_active, metadata } = req.body;
     if (!name) return res.status(400).json({ error: 'name is required' });
     try {
-        const insert = `INSERT INTO access_mgmt.access_policies (name, description, default_action, is_active) VALUES ($1,$2,$3,$4) RETURNING *`;
-        const values = [name, description || null, default_action || 'deny', is_active !== undefined ? is_active : true];
+        const insert = `INSERT INTO access_mgmt.access_policies (name, description, action, is_active, metadata) VALUES ($1,$2,$3,$4,$5) RETURNING *`;
+        const values = [name, description || null, action || 'allow', is_active !== undefined ? is_active : true, metadata || {}];
         const result = await pool.query(insert, values);
         res.status(201).json({ access_policy: result.rows[0] });
     } catch (err) {
@@ -974,7 +1000,7 @@ router.post('/access_policies/remove', ensureJson, async (req, res) => {
 router.patch('/access_policies/update', ensureJson, async (req, res) => {
     const { policy_id, ...fields } = req.body;
     if (!policy_id) return res.status(400).json({ error: 'policy_id is required' });
-    const allowed = ['name','description','default_action','is_active'];
+    const allowed = ['name','description','action','is_active','metadata'];
     const sets = []; const values = []; let idx = 1;
     for (const key of Object.keys(fields)) {
         if (!allowed.includes(key)) continue;
@@ -1134,152 +1160,6 @@ router.patch('/policy_doors/update', ensureJson, async (req, res) => {
         const result = await pool.query(sql, values);
         if (result.rowCount === 0) return res.status(404).json({ error: 'policy_door not found' });
         res.status(200).json({ policy_door: result.rows[0] });
-    } catch (err) {
-        console.error('DB error:', err);
-        res.status(500).json({ error: 'database error' });
-    }
-});
-
-// ---- POLICY_DAYS ----
-router.get('/policy_days/list', async (req, res) => {
-    try {
-        const result = await pool.query('SELECT * FROM access_mgmt.policy_days ORDER BY policy_day_id ASC');
-        res.status(200).json({ policy_days: result.rows });
-    } catch (err) {
-        console.error('DB error:', err);
-        res.status(500).json({ error: 'database error' });
-    }
-});
-
-router.get('/policy_days/get', async (req, res) => {
-    const { policy_day_id } = req.query;
-    if (!policy_day_id) return res.status(400).json({ error: 'policy_day_id is required' });
-    try {
-        const result = await pool.query('SELECT * FROM access_mgmt.policy_days WHERE policy_day_id = $1', [policy_day_id]);
-        if (result.rowCount === 0) return res.status(404).json({ error: 'policy_day not found' });
-        res.status(200).json({ policy_day: result.rows[0] });
-    } catch (err) {
-        console.error('DB error:', err);
-        res.status(500).json({ error: 'database error' });
-    }
-});
-
-router.post('/policy_days/create', ensureJson, async (req, res) => {
-    const { policy_door_id, day_of_week, is_active } = req.body;
-    if (!policy_door_id || day_of_week === undefined) return res.status(400).json({ error: 'policy_door_id and day_of_week are required' });
-    try {
-        const insert = `INSERT INTO access_mgmt.policy_days (policy_door_id, day_of_week, is_active) VALUES ($1,$2,$3) RETURNING *`;
-        const values = [policy_door_id, day_of_week, is_active !== undefined ? is_active : true];
-        const result = await pool.query(insert, values);
-        res.status(201).json({ policy_day: result.rows[0] });
-    } catch (err) {
-        console.error('DB error:', err);
-        res.status(500).json({ error: 'database error' });
-    }
-});
-
-router.post('/policy_days/remove', ensureJson, async (req, res) => {
-    const { policy_day_id } = req.body;
-    if (!policy_day_id) return res.status(400).json({ error: 'policy_day_id is required' });
-    try {
-        const result = await pool.query('DELETE FROM access_mgmt.policy_days WHERE policy_day_id = $1 RETURNING policy_day_id', [policy_day_id]);
-        if (result.rowCount === 0) return res.status(404).json({ error: 'policy_day not found' });
-        res.status(200).json({ deleted: result.rows[0].policy_day_id });
-    } catch (err) {
-        console.error('DB error:', err);
-        res.status(500).json({ error: 'database error' });
-    }
-});
-
-router.patch('/policy_days/update', ensureJson, async (req, res) => {
-    const { policy_day_id, ...fields } = req.body;
-    if (!policy_day_id) return res.status(400).json({ error: 'policy_day_id is required' });
-    const allowed = ['policy_door_id','day_of_week','is_active'];
-    const sets = []; const values = []; let idx = 1;
-    for (const key of Object.keys(fields)) {
-        if (!allowed.includes(key)) continue;
-        sets.push(`${key} = $${idx}`); values.push(fields[key]); idx++;
-    }
-    if (sets.length === 0) return res.status(400).json({ error: 'no updatable fields provided' });
-    const sql = `UPDATE access_mgmt.policy_days SET ${sets.join(', ')} WHERE policy_day_id = $${idx} RETURNING *`;
-    values.push(policy_day_id);
-    try {
-        const result = await pool.query(sql, values);
-        if (result.rowCount === 0) return res.status(404).json({ error: 'policy_day not found' });
-        res.status(200).json({ policy_day: result.rows[0] });
-    } catch (err) {
-        console.error('DB error:', err);
-        res.status(500).json({ error: 'database error' });
-    }
-});
-
-// ---- POLICY_TIME_RANGES ----
-router.get('/policy_time_ranges/list', async (req, res) => {
-    try {
-        const result = await pool.query('SELECT * FROM access_mgmt.policy_time_ranges ORDER BY time_range_id ASC');
-        res.status(200).json({ policy_time_ranges: result.rows });
-    } catch (err) {
-        console.error('DB error:', err);
-        res.status(500).json({ error: 'database error' });
-    }
-});
-
-router.get('/policy_time_ranges/get', async (req, res) => {
-    const { time_range_id } = req.query;
-    if (!time_range_id) return res.status(400).json({ error: 'time_range_id is required' });
-    try {
-        const result = await pool.query('SELECT * FROM access_mgmt.policy_time_ranges WHERE time_range_id = $1', [time_range_id]);
-        if (result.rowCount === 0) return res.status(404).json({ error: 'policy_time_range not found' });
-        res.status(200).json({ policy_time_range: result.rows[0] });
-    } catch (err) {
-        console.error('DB error:', err);
-        res.status(500).json({ error: 'database error' });
-    }
-});
-
-router.post('/policy_time_ranges/create', ensureJson, async (req, res) => {
-    const { policy_day_id, is_active, start_time, end_time } = req.body;
-    if (!policy_day_id || !start_time || !end_time) return res.status(400).json({ error: 'policy_day_id, start_time, and end_time are required' });
-    try {
-        const insert = `INSERT INTO access_mgmt.policy_time_ranges (policy_day_id, is_active, start_time, end_time) VALUES ($1,$2,$3,$4) RETURNING *`;
-        const values = [policy_day_id, is_active !== undefined ? is_active : true, start_time, end_time];
-        const result = await pool.query(insert, values);
-        res.status(201).json({ policy_time_range: result.rows[0] });
-    } catch (err) {
-        console.error('DB error:', err);
-        res.status(500).json({ error: 'database error' });
-    }
-});
-
-router.post('/policy_time_ranges/remove', ensureJson, async (req, res) => {
-    const { time_range_id } = req.body;
-    if (!time_range_id) return res.status(400).json({ error: 'time_range_id is required' });
-    try {
-        const result = await pool.query('DELETE FROM access_mgmt.policy_time_ranges WHERE time_range_id = $1 RETURNING time_range_id', [time_range_id]);
-        if (result.rowCount === 0) return res.status(404).json({ error: 'policy_time_range not found' });
-        res.status(200).json({ deleted: result.rows[0].time_range_id });
-    } catch (err) {
-        console.error('DB error:', err);
-        res.status(500).json({ error: 'database error' });
-    }
-});
-
-router.patch('/policy_time_ranges/update', ensureJson, async (req, res) => {
-    const { time_range_id, ...fields } = req.body;
-    if (!time_range_id) return res.status(400).json({ error: 'time_range_id is required' });
-    const allowed = ['policy_day_id','is_active','start_time','end_time'];
-    const sets = []; const values = []; let idx = 1;
-    for (const key of Object.keys(fields)) {
-        if (!allowed.includes(key)) continue;
-        sets.push(`${key} = $${idx}`); values.push(fields[key]); idx++;
-    }
-    if (sets.length === 0) return res.status(400).json({ error: 'no updatable fields provided' });
-    const sql = `UPDATE access_mgmt.policy_time_ranges SET ${sets.join(', ')} WHERE time_range_id = $${idx} RETURNING *`;
-    values.push(time_range_id);
-    try {
-        const result = await pool.query(sql, values);
-        if (result.rowCount === 0) return res.status(404).json({ error: 'policy_time_range not found' });
-        res.status(200).json({ policy_time_range: result.rows[0] });
     } catch (err) {
         console.error('DB error:', err);
         res.status(500).json({ error: 'database error' });

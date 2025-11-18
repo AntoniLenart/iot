@@ -11,6 +11,11 @@ export default function Users() {
   const [currentUserId, setCurrentUserId] = useState(null);
   const [isReadingBiometric, setIsReadingBiometric] = useState(false);
   const [isReadingRfid, setIsReadingRfid] = useState(false);
+  const [isRfid, setIsRfid] = useState(false);
+  const [currRfidCredId, setCurrRfidCredId] = useState(null);
+  const [currBiomCredId, setCurrBiomCredId] = useState(null);
+  const [isBiom, setIsBiom] = useState(false);
+  const [rfidBiomLoaded, setRfidBiomLoaded] = useState(false);
 
   // Fetch users from the database on component mount
   const fetchUsers = async () => {
@@ -46,13 +51,28 @@ export default function Users() {
     setSelectedUser({ ...user });
   };
 
+  useEffect(() => {
+  if (selectedUser && !rfidBiomLoaded) {
+    const fetchRfid = async () => {
+      await getInitialIds();
+      setRfidBiomLoaded(true);
+    };
+    fetchRfid();
+  }
+  }, [selectedUser, rfidBiomLoaded]);
+
   const closeUserModal = () => {
     setSelectedUser(null);
     setShowDeleteConfirm(false);
+    setRfidBiomLoaded(false);
+    setIsBiom(false);
+    setIsRfid(false);
   };
 
   // Saves changes with API call
   const saveUserChanges = async (fields) => {
+    console.log(fields)
+
     setActionLoading(true);
     try {
       const response = await fetch('http://localhost:4000/api/v1/users/update', {
@@ -65,6 +85,78 @@ export default function Users() {
         throw new Error(errorData.error || 'Failed to update user');
       }
 
+      console.log(isRfid)
+      if(fields.rfid && !isRfid)
+      {
+        try {
+        const response = await fetch('http://localhost:4000/api/v1/credentials/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: selectedUser.user_id, credential_type: 'rfid_card', identifier: selectedUser.rfid, issued_by: JSON.parse(localStorage.getItem('user')).user_id, is_active: true, ...fields }),
+        });
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to update credentials (rfid)');
+        }
+        } catch (err) {
+          alert(`Error updating credentials (rfid): ${err.message}`);
+        }
+      }
+
+      if(fields.rfid && isRfid)
+      {
+        console.log(currRfidCredId);
+        try {
+          const response = await fetch('http://localhost:4000/api/v1/credentials/update', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: selectedUser.user_id, credential_id: currRfidCredId, identifier: selectedUser.rfid, issued_by: JSON.parse(localStorage.getItem('user')).user_id, is_active: true, ...fields }),
+          });
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to update credentials (rfid)');
+        }
+        } catch (err) {
+        alert(`Error updating credentials (rfid): ${err.message}`);
+        } 
+      }
+
+      if(fields.biometricId && !isBiom)
+      {
+        try {
+        const response = await fetch('http://localhost:4000/api/v1/credentials/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: selectedUser.user_id, credential_type: 'fingerprint', identifier: selectedUser.biometricId, issued_by: JSON.parse(localStorage.getItem('user')).user_id, is_active: true, ...fields }),
+        });
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to update credentials (fingerprint)');
+        }
+        } catch (err) {
+          alert(`Error updating credentials (fingerprint): ${err.message}`);
+        }
+      }
+      
+      console.log(isBiom)
+      if(fields.biometricId && isBiom)
+      {
+        console.log(currBiomCredId);
+        try {
+          const response = await fetch('http://localhost:4000/api/v1/credentials/update', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: selectedUser.user_id, credential_id: currBiomCredId, identifier: selectedUser.biometricId, issued_by: JSON.parse(localStorage.getItem('user')).user_id, is_active: true, ...fields }),
+          });
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to update credentials (fingerprint)');
+        }
+        } catch (err) {
+        alert(`Error updating credentials (fingerprint): ${err.message}`);
+        } 
+      }
+
       await fetchUsers(); // Refresh list
       closeUserModal();
     } catch (err) {
@@ -72,6 +164,7 @@ export default function Users() {
     } finally {
       setActionLoading(false);
     }
+
   };
 
   // Deletes user (API call)
@@ -98,6 +191,57 @@ export default function Users() {
 
   if (loading) return <div>Loading users...</div>;
   if (error) return <div>Error: {error}</div>;
+
+  const getInitialIds =  async () => {
+
+    let user_id, rfidId, biomId
+
+    try {
+      const params = new URLSearchParams({
+        user_id: selectedUser.user_id,
+        type: 'rfid_card'
+      });
+
+      const response = await fetch(`http://localhost:4000/api/v1/credentials/getByUserId?${params.toString()}`);
+      const data = await response.json()
+      rfidId = data?.credential?.identifier || "";
+      setCurrRfidCredId(data?.credential?.credential_id || null);
+      if(rfidId) {setIsRfid(true)}
+
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setActionLoading(false);
+    }
+
+    try {
+      const params = new URLSearchParams({
+        user_id: selectedUser.user_id,
+        type: 'fingerprint'
+      });
+
+      const response = await fetch(`http://localhost:4000/api/v1/credentials/getByUserId?${params.toString()}`);
+      const data = await response.json()
+      biomId = data?.credential?.identifier || "";
+      setCurrBiomCredId(data?.credential?.credential_id || null);
+      if(biomId) {setIsBiom(true)}
+      
+
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setActionLoading(false);
+    }
+
+    setSelectedUser((prev) => ({
+      ...prev,
+      rfid: rfidId || "",
+      biometricId: biomId || ""
+     }));
+
+
+    return null;
+  }
 
   const handleRfidRead = async () => {
     setIsReadingRfid(true);
@@ -142,7 +286,7 @@ export default function Users() {
     }
   }
 
-   const handleBiometricRead = async() => {
+  const handleBiometricRead = async() => {
     setIsReadingBiometric(true)
 
     try {
@@ -166,7 +310,7 @@ export default function Users() {
 
           setSelectedUser((prev) => ({
           ...prev,
-          biometricId: biometry.data || "", // assuming your endpoint sends { rfid: "..." }
+          biometricId: biometry.data || "",
           }));
 
           eventSource.close();
@@ -320,7 +464,6 @@ export default function Users() {
                     setSelectedUser({
                       ...selectedUser,
                       biometricId: e.target.value,
-                     
                     })
                   }
                   placeholder="Wpisz identyfikator biometryczny"
