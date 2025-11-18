@@ -351,7 +351,7 @@ router.get('/credentials/getByUserId', async (req, res) => {
     const { user_id, type } = req.query;
     if (!user_id || !type) return res.status(400).json({ error: 'user_id and type is required' });
     try {
-        const result = await pool.query('SELECT identifier FROM access_mgmt.credentials WHERE user_id = $1 AND credential_type = $2', [user_id, type]);
+        const result = await pool.query('SELECT identifier, credential_id FROM access_mgmt.credentials WHERE user_id = $1 AND credential_type = $2', [user_id, type]);
         if (result.rowCount === 0) return res.status(404).json({ error: 'credential not found' });
         res.status(200).json({ credential: result.rows[0] });
     } catch (err) {
