@@ -21,7 +21,7 @@ BEGIN
     CREATE TYPE user_type AS ENUM ('employee','guest','service','admin');
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'access_action') THEN
-    CREATE TYPE access_action AS ENUM ('grant','deny','challenge');
+    CREATE TYPE access_action AS ENUM ('allow','deny','challenge');
   END IF;
 END$$;
 
@@ -136,10 +136,11 @@ CREATE TABLE IF NOT EXISTS access_policies (
   policy_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
   description text,
-  default_action access_action NOT NULL DEFAULT 'deny',
+  action access_action NOT NULL DEFAULT 'allow',
   is_active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  metadata jsonb DEFAULT '{}'          -- Dni tygodnia i czas: {"active_days": true, "active_times": true, "days": {"0": [{"start": "08:00", "end": "12:00"}, {"start": "13:00", "end": "18:00"}]}} (multiple ranges per day allowed)
 );
 
 -- TABLE: policy_rooms (pokoje w politykach dostępu)
@@ -161,26 +162,8 @@ CREATE TABLE IF NOT EXISTS policy_doors (
   metadata jsonb DEFAULT '{}'
 );
 
--- TABLE: policy_days (dni w politykach dostępu)
-CREATE TABLE IF NOT EXISTS policy_days (
-  policy_day_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  policy_door_id uuid REFERENCES policy_doors(policy_door_id) ON DELETE CASCADE ON UPDATE CASCADE,
-  day_of_week smallint NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),  -- 0=niedziela, 6=sobota
-  is_active boolean NOT NULL DEFAULT true
-);
-
--- TABLE: policy_time_ranges (zakresy czasowe w politykach dostępu)
-CREATE TABLE IF NOT EXISTS policy_time_ranges (
-  time_range_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  policy_day_id uuid REFERENCES policy_days(policy_day_id) ON DELETE CASCADE ON UPDATE CASCADE,
-  is_active boolean NOT NULL DEFAULT true,
-  start_time time NOT NULL,
-  end_time time NOT NULL,
-  CHECK (end_time > start_time)
-);
-
-CREATE INDEX IF NOT EXISTS ix_access_policies_name ON access_policies (lower(name));
-CREATE INDEX IF NOT EXISTS ix_access_policies_active ON access_policies (is_active);
+-- DROP TABLE IF EXISTS policy_time_ranges;
+-- DROP TABLE IF EXISTS policy_days;
 
 -- TABLE LINK: group_policies (powiązanie grup -> polityki)
 CREATE TABLE IF NOT EXISTS group_policies (
@@ -271,6 +254,13 @@ BEGIN
         AND is_active = true;
     END IF;
   END IF;
+  -- dezaktywuj powiązany kod QR, jeśli osiągnięto limit użycia
+  IF (NEW.usage_limit IS NOT NULL AND NEW.usage_count >= NEW.usage_limit) THEN
+    UPDATE qr_codes
+    SET is_active = false
+    WHERE qr_id = NEW.qr_id
+      AND is_active = true;
+  END IF;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -305,7 +295,7 @@ CREATE TABLE IF NOT EXISTS access_logs (
   door_id uuid REFERENCES doors(door_id) ON DELETE SET NULL,
   user_id uuid REFERENCES users(user_id) ON DELETE SET NULL,
   credential_id uuid REFERENCES credentials(credential_id) ON DELETE SET NULL,
-  action access_action NOT NULL DEFAULT 'grant',
+  action access_action NOT NULL DEFAULT 'allow',
   success boolean NOT NULL DEFAULT true,
   reason text,                             -- np. "time_restricted", "badge_revoked", "fire_alarm"
   raw_event jsonb DEFAULT '{}',             -- surowe dane z urządzenia
