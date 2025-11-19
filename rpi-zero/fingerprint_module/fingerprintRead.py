@@ -13,8 +13,10 @@ from typing import Optional, Tuple, List
 import base64
 import json
 from pathlib import Path
+import logging
 
 import RPi.GPIO as GPIO
+
 
 # Default serial port for Raspberry Pi
 DEFAULT_PORT = "/dev/serial0"
@@ -33,6 +35,9 @@ ACK_USER_EXIST = 0x06
 # GPIO
 RST_PIN = 18
 
+# Logging
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.DEBUG)
 
 class FingerprintError(Exception):
     pass
@@ -181,7 +186,7 @@ class FingerprintModule:
         """Force module to exit scanning by entering sleep mode."""
         packet = self._build_simple_command(0x2C)
         self._send(packet)
-        print("Stop (sleep) command sent.")
+        logger.debug("Stop (sleep) command sent.")
 
     def hardware_reset(self):
         GPIO.setmode(GPIO.BCM)
@@ -191,7 +196,7 @@ class FingerprintModule:
         GPIO.output(RST_PIN, GPIO.HIGH)
         time.sleep(0.2)   # wait for module to boot
         GPIO.cleanup()
-        print("Fingerprint module reset (woken from sleep).")
+        logger.debug("Fingerprint module reset (woken from sleep).")
 
     def get_eigenvalues(self, wait=0) -> bytes:
         """
@@ -228,7 +233,7 @@ class FingerprintModule:
         if filename:
             with open(filename, "w") as f:
                 json.dump(data, f, indent=2)
-            print(f"Eigenvalue saved to JSON file: {filename}")
+            logger.debug(f"Eigenvalue saved to JSON file: {filename}")
 
         return data
     
@@ -261,7 +266,7 @@ class FingerprintModule:
         if bin_filename:
             with open(bin_filename, "wb") as f:
                 f.write(eigen_bytes)
-            print(f"Eigenvalue written to binary file: {bin_filename}")
+            logger.info(f"Eigenvalue written to binary file: {bin_filename}")
 
         return eigen_bytes
     
@@ -269,20 +274,21 @@ class FingerprintModule:
 if __name__ == "__main__":
     fp = FingerprintModule(port=DEFAULT_PORT, baud=DEFAULT_BAUD, timeout=0)
 
-    print("Get eigenvalues of your fingerprint")
-    print("Capturing eigenvalues...")
+    logger.info("Get eigenvalues of your fingerprint")
+    logger.info("Capturing eigenvalues...")
 
     fp.new_scan()
+    logging.info("Started new scan")
     try:
         while True:
-            data = fp.get_eigenvalues()
+            data = fp.get_eigenvalues(wait=0.1)
             if data is not None:
-                print(f"Eigenvalues length: {len(data)} bytes")
-                print(data)
-                print(f"JSON: \n {fp.eigen_to_json(data)}")
+                logger.debug(f"Eigenvalues length: {len(data)} bytes")
+                logger.debug(data)
+                logger.info(f"JSON: \n {fp.eigen_to_json(data)}")
                 break
             else:
-                print("Waiting for data from scanner...")
+                logger.info("Waiting for data from scanner...")
                 time.sleep(1)     
     except KeyboardInterrupt:
         fp.stop_scan()

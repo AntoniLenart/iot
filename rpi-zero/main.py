@@ -118,7 +118,7 @@ if __name__ == "__main__":
 
 
                         if timestamp >= timeoutStart and decodeJSONDecision(msg):
-                            # print("allowed")
+                            print("allowed")
                             # GPIO.output(RELAY_PIN, GPIO.HIGH)
                             time.sleep(5)
                             # GPIO.output(RELAY_PIN, GPIO.LOW)
@@ -220,4 +220,4 @@ if __name__ == "__main__":
         fingerprint.stop_scan()
         scanner.stop_scan()
         scanner.cleanup()
-        print("Everything closed gracefully :)")
+        logger.debug("Everything closed gracefully :)")
