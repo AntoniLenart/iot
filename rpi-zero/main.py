@@ -51,16 +51,8 @@ def decodeJSONDecision(data):
 
 if __name__ == "__main__":
 
-    mqtt_user = ''
-    mqtt_password = ''
-
-    request_topic = "access/door/hr/request"
-    decision_topic = "access/door/hr/decision"
-
     secrets = dotenv.dotenv_values(".env")
-    mqtt = mqttClient.MQTTClient(
-                request_topic=request_topic,
-                decision_topic=decision_topic)
+    mqtt = mqttClient.MQTTClient()
     
     if secrets:
         if 'MQTT_USER' in secrets and 'MQTT_PASSWORD' in secrets:
@@ -69,7 +61,9 @@ if __name__ == "__main__":
                        qos=int(secrets['MQTT_QOS']),
                        user=secrets['MQTT_USER'], 
                        password=secrets['MQTT_PASSWORD'], 
-                       cafile=secrets['MQTT_CAFILE'])
+                       cafile=secrets['MQTT_CAFILE'],
+                       request_topic=secrets['MQTT_REQUEST_TOPIC'],
+                       decision_topic=secrets['MQTT_DECISION_TOPIC'])
         else:
             logger.error(".env file exists but doesn't contain all neccessary entries")
             raise mqttClient.MQTTError("Incorrect .env file contents")
