@@ -10,6 +10,7 @@ import databaseRoutes, { pool, createQR, hashPassword, verifyPassword } from './
 
 const app = express()
 const PORT = 4000
+app.use('trust proxy', 1)
 
 app.use(cors());
 app.use(express.json())

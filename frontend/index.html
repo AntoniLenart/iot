@@ -8,6 +8,14 @@
   </head>
   <body>
     <div id="root"></div>
+
+    <script>
+      window.APP_CONFIG = {
+        FRONT_ENDPOINT: "http://192.168.1.10",
+        SERVER_ENDPOINT: "http://192.168.1.10/backend/",
+        ACCESS_ENDPOINT: "http://192.168.1.10/access-service/"
+      };
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
