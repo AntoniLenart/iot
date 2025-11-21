@@ -1,4 +1,7 @@
 import { useState, useEffect } from "react";
+import { getConfig } from "../../src/config";
+
+const { SERVER_ENDPOINT } = getConfig()
 
 export default function AddUser() {
   const [users, setUsers] = useState([]);
@@ -27,7 +30,7 @@ export default function AddUser() {
   // For RFID user list purpose
   const fetchUsers = async () => {
     try {
-      const response = await fetch('http://localhost:4000/api/v1/users/list');
+      const response = await fetch(SERVER_ENDPOINT + 'api/v1/users/list');
       if (!response.ok) throw new Error('Failed to fetch users');
       const data = await response.json();
       setUsers(data.users || []);
@@ -74,7 +77,7 @@ export default function AddUser() {
     const payload = { ...userFormData, is_active: true, metadata: {} };
 
     try {
-      const response = await fetch("http://localhost:4000/api/v1/users/create", {
+      const response = await fetch(SERVER_ENDPOINT + "/api/v1/users/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -116,7 +119,7 @@ export default function AddUser() {
 
     try {
       // First, create a credential for RFID
-      const credResponse = await fetch("http://localhost:4000/api/v1/credentials/create", {
+      const credResponse = await fetch(SERVER_ENDPOINT + "/api/v1/credentials/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -138,7 +141,7 @@ export default function AddUser() {
       const credentialId = credData.credential.credential_id;
 
       // Then, create the RFID card
-      const rfidResponse = await fetch("http://localhost:4000/api/v1/rfid_cards/create", {
+      const rfidResponse = await fetch(SERVER_ENDPOINT + "/api/v1/rfid_cards/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

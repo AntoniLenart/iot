@@ -1,4 +1,7 @@
 import { useState, useEffect } from "react";
+import { getConfig } from "../../src/config";
+
+const { SERVER_ENDPOINT } = getConfig()
 
 export default function Logs() {
   const [logs, setLogs] = useState([]);
@@ -25,17 +28,17 @@ export default function Logs() {
         userGroupsResponse,
         accessPoliciesResponse
       ] = await Promise.all([
-        fetch('http://localhost:4000/api/v1/admin_audit/list'),
-        fetch('http://localhost:4000/api/v1/users/list'),
-        fetch('http://localhost:4000/api/v1/credentials/list'),
-        fetch('http://localhost:4000/api/v1/devices/list'),
-        fetch('http://localhost:4000/api/v1/qr/list'),
-        fetch('http://localhost:4000/api/v1/buildings/list'),
-        fetch('http://localhost:4000/api/v1/rooms/list'),
-        fetch('http://localhost:4000/api/v1/doors/list'),
-        fetch('http://localhost:4000/api/v1/desks/list'),
-        fetch('http://localhost:4000/api/v1/user_groups/list'),
-        fetch('http://localhost:4000/api/v1/access_policies/list')
+        fetch(SERVER_ENDPOINT + '/api/v1/admin_audit/list'),
+        fetch(SERVER_ENDPOINT + '/api/v1/users/list'),
+        fetch(SERVER_ENDPOINT + '/api/v1/credentials/list'),
+        fetch(SERVER_ENDPOINT + '/api/v1/devices/list'),
+        fetch(SERVER_ENDPOINT + '/api/v1/qr/list'),
+        fetch(SERVER_ENDPOINT + '/api/v1/buildings/list'),
+        fetch(SERVER_ENDPOINT + '/api/v1/rooms/list'),
+        fetch(SERVER_ENDPOINT + '/api/v1/doors/list'),
+        fetch(SERVER_ENDPOINT + '/api/v1/desks/list'),
+        fetch(SERVER_ENDPOINT + '/api/v1/user_groups/list'),
+        fetch(SERVER_ENDPOINT + '/api/v1/access_policies/list')
       ]);
       if (!logsResponse.ok || !usersResponse.ok || !credentialsResponse.ok || !devicesResponse.ok || !qrResponse.ok || !buildingsResponse.ok || !roomsResponse.ok || !doorsResponse.ok || !desksResponse.ok || !userGroupsResponse.ok || !accessPoliciesResponse.ok) throw new Error('Failed to fetch data');
       

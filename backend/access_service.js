@@ -8,7 +8,9 @@ const { Pool } = pkg;
 dotenv.config()
 
 const app = express()
+app.use(cors())
 app.use(express.json())
+app.set('trust proxy', 1)
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -113,7 +115,6 @@ app.get("/frontend/rfid", (req, res) => {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
-    "Access-Control-Allow-Origin": "http://localhost:5173",
   });
 
   enrollClient = res; // zapisujemy klienta (frontend)
@@ -131,7 +132,6 @@ app.get("/frontend/biometric", (req, res) => {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
-    "Access-Control-Allow-Origin": "http://localhost:5173",
   });
 
   enrollClient = res; // zapisujemy klienta (frontend)
@@ -146,10 +146,6 @@ app.get("/frontend/biometric", (req, res) => {
 
 // Otwórz okno rejestracji dla "add" (wywołuje Frontend)
 app.post('/enroll/start', (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "http://localhost:5173");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
   enrollOpenUntil = Date.now() + ENROLL_WINDOW_MS
   console.log(`[enroll] window open for ${ENROLL_WINDOW_MS/1000}s until`, new Date(enrollOpenUntil).toISOString())
   res.json({ ok: true, until: enrollOpenUntil })

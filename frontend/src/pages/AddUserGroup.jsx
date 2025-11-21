@@ -1,4 +1,7 @@
 import { useState, useEffect } from "react";
+import { getConfig } from "../../src/config";
+
+const { SERVER_ENDPOINT } = getConfig()
 
 export default function UserGroupsPage() {
   const [rooms, setRooms] = useState([]);
@@ -13,7 +16,7 @@ export default function UserGroupsPage() {
 
   const fetchRooms = async () => {
     try {
-      const response = await fetch('http://localhost:4000/api/v1/rooms/list');
+      const response = await fetch(SERVER_ENDPOINT + '/api/v1/rooms/list');
       if (!response.ok) throw new Error('Failed to fetch users');
       const data = await response.json();
       setRooms(data.rooms || []);
@@ -26,7 +29,7 @@ export default function UserGroupsPage() {
 
   const fetchGroups = async () => {
     try {
-      const response = await fetch('http://localhost:4000/api/v1/user_groups/list');
+      const response = await fetch(SERVER_ENDPOINT + '/api/v1/user_groups/list');
       if (!response.ok) throw new Error('Failed to fetch users');
       const data = await response.json();
       setGroups(data.user_groups || []);
@@ -66,7 +69,7 @@ export default function UserGroupsPage() {
 
    try {
       // First, create a credential for RFID
-      const groupResponse = await fetch("http://localhost:4000/api/v1/user_groups/create", {
+      const groupResponse = await fetch(SERVER_ENDPOINT + "/api/v1/user_groups/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -103,7 +106,7 @@ export default function UserGroupsPage() {
 
     // try {
     //   // First, create a credential for RFID
-    //   const groupResponse = await fetch("http://localhost:4000/api/v1/user_groups/create", {
+    //   const groupResponse = await fetch(SERVER_ENDPOINT + "/api/v1/user_groups/create", {
     //     method: "POST",
     //     headers: { "Content-Type": "application/json" },
     //     body: JSON.stringify({

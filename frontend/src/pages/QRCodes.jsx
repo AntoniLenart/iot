@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import axios from 'axios';
+import { getConfig } from "../../src/config";
+
+const { SERVER_ENDPOINT } = getConfig()
 
 export default function QRCodes() {
   const [formData, setFormData] = useState({
@@ -26,7 +29,7 @@ export default function QRCodes() {
     const issued_by = JSON.parse(localStorage.getItem('user'))?.user_id;
 
     try {
-      const response = await axios.post('http://localhost:4000/qrcode_generation', {
+      const response = await axios.post(SERVER_ENDPOINT + '/qrcode_generation', {
         ...formData,
         issued_by,
       });
