@@ -1,4 +1,7 @@
 import { useState, useEffect } from "react";
+import { getConfig } from "../../src/config";
+
+const { SERVER_ENDPOINT, ACCESS_ENDPOINT } = getConfig()
 
 export default function Users() {
   const [users, setUsers] = useState([]);
@@ -75,7 +78,7 @@ export default function Users() {
 
     setActionLoading(true);
     try {
-      const response = await fetch('http://localhost:4000/api/v1/users/update', {
+      const response = await fetch(SERVER_ENDPOINT + '/api/v1/users/update', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: selectedUser.user_id, ...fields }),
@@ -89,7 +92,7 @@ export default function Users() {
       if(fields.rfid && !isRfid)
       {
         try {
-        const response = await fetch('http://localhost:4000/api/v1/credentials/create', {
+        const response = await fetch(SERVER_ENDPOINT + '/api/v1/credentials/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ user_id: selectedUser.user_id, credential_type: 'rfid_card', identifier: selectedUser.rfid, issued_by: JSON.parse(localStorage.getItem('user')).user_id, is_active: true, ...fields }),
@@ -107,7 +110,7 @@ export default function Users() {
       {
         console.log(currRfidCredId);
         try {
-          const response = await fetch('http://localhost:4000/api/v1/credentials/update', {
+          const response = await fetch(SERVER_ENDPOINT + '/api/v1/credentials/update', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ user_id: selectedUser.user_id, credential_id: currRfidCredId, identifier: selectedUser.rfid, issued_by: JSON.parse(localStorage.getItem('user')).user_id, is_active: true, ...fields }),
@@ -124,7 +127,7 @@ export default function Users() {
       if(fields.biometricId && !isBiom)
       {
         try {
-        const response = await fetch('http://localhost:4000/api/v1/credentials/create', {
+        const response = await fetch(SERVER_ENDPOINT + '/api/v1/credentials/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ user_id: selectedUser.user_id, credential_type: 'fingerprint', identifier: selectedUser.biometricId, issued_by: JSON.parse(localStorage.getItem('user')).user_id, is_active: true, ...fields }),
@@ -143,7 +146,7 @@ export default function Users() {
       {
         console.log(currBiomCredId);
         try {
-          const response = await fetch('http://localhost:4000/api/v1/credentials/update', {
+          const response = await fetch(SERVER_ENDPOINT + '/api/v1/credentials/update', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ user_id: selectedUser.user_id, credential_id: currBiomCredId, identifier: selectedUser.biometricId, issued_by: JSON.parse(localStorage.getItem('user')).user_id, is_active: true, ...fields }),
@@ -171,7 +174,7 @@ export default function Users() {
   const deleteUser = async (user_id) => {
     setActionLoading(true);
     try {
-      const response = await fetch('http://localhost:4000/api/v1/users/remove', {
+      const response = await fetch(SERVER_ENDPOINT + '/api/v1/users/remove', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id }),
@@ -202,7 +205,7 @@ export default function Users() {
         type: 'rfid_card'
       });
 
-      const response = await fetch(`http://localhost:4000/api/v1/credentials/getByUserId?${params.toString()}`);
+      const response = await fetch(SERVER_ENDPOINT + `/api/v1/credentials/getByUserId?${params.toString()}`);
       const data = await response.json()
       rfidId = data?.credential?.identifier || "";
       setCurrRfidCredId(data?.credential?.credential_id || null);
@@ -220,7 +223,7 @@ export default function Users() {
         type: 'fingerprint'
       });
 
-      const response = await fetch(`http://localhost:4000/api/v1/credentials/getByUserId?${params.toString()}`);
+      const response = await fetch(SERVER_ENDPOINT + `/api/v1/credentials/getByUserId?${params.toString()}`);
       const data = await response.json()
       biomId = data?.credential?.identifier || "";
       setCurrBiomCredId(data?.credential?.credential_id || null);
@@ -247,11 +250,11 @@ export default function Users() {
     setIsReadingRfid(true);
 
     try {
-      await fetch("http://localhost:4001/enroll/start", {
+      await fetch(ACCESS_ENDPOINT + "/enroll/start", {
         method: "POST",
       });
 
-      const eventSource = new EventSource("http://localhost:4001/frontend/rfid");
+      const eventSource = new EventSource(ACCESS_ENDPOINT + "/frontend/rfid");
 
       const timeout = setTimeout(() => {
         console.log("Timeout - no RFID data received");
@@ -290,11 +293,11 @@ export default function Users() {
     setIsReadingBiometric(true)
 
     try {
-      await fetch("http://localhost:4001/enroll/start", {
+      await fetch(ACCESS_ENDPOINT + "/enroll/start", {
         method: "POST",
       });
 
-        const eventSource = new EventSource("http://localhost:4001/frontend/biometric");
+        const eventSource = new EventSource(ACCESS_ENDPOINT + "/frontend/biometric");
 
         const timeout = setTimeout(() => {
             console.log("Timeout - no biometric data received")
@@ -578,7 +581,7 @@ export default function Users() {
                 onClick={async () => {
                   setActionLoading(true);
                   try {
-                    const response = await fetch('http://localhost:4000/api/v1/users/remove', {
+                    const response = await fetch(SERVER_ENDPOINT + '/api/v1/users/remove', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ user_id: selectedUser.user_id }),

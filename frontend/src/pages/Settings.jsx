@@ -1,4 +1,7 @@
 import { useState, useEffect } from 'react';
+import { getConfig } from "../../src/config";
+
+const { SERVER_ENDPOINT } = getConfig()
 
 export default function Settings() {
   const [formData, setFormData] = useState({
@@ -17,7 +20,7 @@ export default function Settings() {
       if (user && user.user_id) {
         setFormData((prev) => ({ ...prev, user_id: user.user_id }));
         try {
-          const response = await fetch(`http://localhost:4000/api/v1/users/get?user_id=${user.user_id}`);
+          const response = await fetch(SERVER_ENDPOINT + `/api/v1/users/get?user_id=${user.user_id}`);
           if (response.ok) {
             const data = await response.json();
             const { username, email, phone } = data.user;
@@ -65,7 +68,7 @@ export default function Settings() {
     }
 
     try {
-      const response = await fetch('http://localhost:4000/api/v1/users/update', {
+      const response = await fetch(SERVER_ENDPOINT + '/api/v1/users/update', {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

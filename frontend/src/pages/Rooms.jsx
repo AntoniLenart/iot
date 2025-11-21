@@ -1,6 +1,9 @@
 import FloorPlan from "../components/FloorPlan";
 import { useState, useEffect } from "react";
 import { useAuth } from "../components/AuthContext";
+import { getConfig } from "../../src/config";
+
+const { SERVER_ENDPOINT } = getConfig()
 
 export default function Rooms() {
   const { user } = useAuth();

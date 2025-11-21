@@ -1,6 +1,9 @@
 import FloorPlan from "../components/FloorPlan";
 import { useState, useEffect } from "react";
 import { useAuth } from "../components/AuthContext";
+import { getConfig } from "../../src/config";
+
+const { SERVER_ENDPOINT } = getConfig()
 
 export default function Dashboard() {
   const [svgMarkup, setSvgMarkup] = useState(null);
@@ -22,8 +25,8 @@ export default function Dashboard() {
     const fetchLogs = async () => {
       try {
         const [logsRes, usersRes] = await Promise.all([
-          fetch('http://localhost:4000/api/v1/admin_audit/list'),
-          fetch('http://localhost:4000/api/v1/users/list')
+          fetch(SERVER_ENDPOINT + '/api/v1/admin_audit/list'),
+          fetch(SERVER_ENDPOINT + '/api/v1/users/list')
         ]);
         if (logsRes.ok && usersRes.ok) {
           const logsData = await logsRes.json();
