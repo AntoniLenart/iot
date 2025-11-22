@@ -378,7 +378,7 @@ export async function createQR({ code, credential_id, valid_from, valid_until, u
     try {
         await client.query('BEGIN');
         let credId = credential_id || null;
-        const tokenVal = metadata.token || null;
+        const tokenVal = code || null;
         if (!credId) {
             // create a placeholder credential tied to no user (external token)
             const credRes = await client.query(
@@ -395,9 +395,9 @@ export async function createQR({ code, credential_id, valid_from, valid_until, u
             );
         }
 
-        const insert = `INSERT INTO access_mgmt.qr_codes (code, credential_id, created_at, valid_from, valid_until, usage_limit, usage_count, is_active, recipient_info)
-                        VALUES (COALESCE($1, gen_random_uuid()::text), $2, now(), COALESCE($3, now()), $4, $5, 0, true, $6) RETURNING *`;
-        const values = [code || null, credId, valid_from || null, valid_until, usage_limit || 1, recipient_info || null];
+        const insert = `INSERT INTO access_mgmt.qr_codes (code, credential_id, created_at, valid_from, valid_until, usage_limit, usage_count, is_active, recipient_info, metadata)
+                        VALUES (COALESCE($1, gen_random_uuid()::text), $2, now(), COALESCE($3, now()), $4, $5, 0, true, $6, $7) RETURNING *`;
+        const values = [code || null, credId, valid_from || null, valid_until, usage_limit || 1, recipient_info || null, metadata];
         const result = await client.query(insert, values);
 
         await client.query('COMMIT');
