@@ -14,7 +14,7 @@ export default function Sidebar({ isSidebarOpen, closeSidebar }) {
         <Link to="/dashboard" onClick={closeSidebar} className="hover:bg-gray-700 p-2 rounded">Dashboard</Link>
         {isAdmin && <Link to="/users" onClick={closeSidebar} className="hover:bg-gray-700 p-2 rounded">Zarządzanie użytkownikami</Link>}
         {isAdmin && <Link to="/add-user" onClick={closeSidebar} className="hover:bg-gray-700 p-2 rounded">Dodaj użytkownika / RFID</Link>}
-        {isAdmin && <Link to="/add-user-group" onClick={closeSidebar} className="hover:bg-gray-700 p-2 rounded">Dodaj grupy dostępu</Link>}
+        {isAdmin && <Link to="/add-user-group" onClick={closeSidebar} className="hover:bg-gray-700 p-2 rounded">Dodaj / edytuj grupy dostępu</Link>}
         <Link to="/rooms" onClick={closeSidebar} className="hover:bg-gray-700 p-2 rounded">Rezerwacja sal</Link>
         <Link to="/qr-codes" onClick={closeSidebar} className="hover:bg-gray-700 p-2 rounded">Tworzenie QR</Link>
         {isAdmin && <Link to="/logs" onClick={closeSidebar} className="hover:bg-gray-700 p-2 rounded">Logi systemowe</Link>}

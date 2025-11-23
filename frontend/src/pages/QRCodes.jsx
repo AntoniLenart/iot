@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { getConfig } from "../../src/config";
 
@@ -14,10 +14,41 @@ export default function QRCodes() {
   const [qrCode, setQrCode] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [rooms, setRooms] = useState([]);
+  const [selectedRooms, setSelectedRooms] = useState([]);
+
+  const fetchRooms = async () => {
+    try {
+      const response = await fetch(SERVER_ENDPOINT + '/api/v1/rooms/list');
+      if (!response.ok) throw new Error('Nie udało się pobrać listy pokoi');
+      const data = await response.json();
+      setRooms(data.rooms || []);
+    } catch (err) {
+      setMessage(err.message);
+    }
+  };
+
+  useEffect(() => {
+    fetchRooms();
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
+  };
+
+  const handleAddRoom = (e) => {
+    const roomId = e.target.value;
+    if (!roomId) return;
+    const room = rooms.find(r => r.room_id === roomId);
+    if (room && !selectedRooms.some(r => r.room_id === roomId)) {
+      setSelectedRooms([...selectedRooms, room]);
+    }
+    e.target.value = '';
+  };
+
+  const handleRemoveRoom = (roomId) => {
+    setSelectedRooms(selectedRooms.filter(r => r.room_id !== roomId));
   };
 
   const handleSubmit = async (e) => {
@@ -32,6 +63,7 @@ export default function QRCodes() {
       const response = await axios.post(SERVER_ENDPOINT + '/qrcode_generation', {
         ...formData,
         issued_by,
+        metadata: { rooms: selectedRooms.map(r => r.room_id) },
       });
       setQrCode(response.data.qrCode);
       setMessage('Kod QR wygenerowany pomyślnie!');
@@ -96,6 +128,39 @@ export default function QRCodes() {
               min="1"
               className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500"
             />
+          </div>
+           {/* Wybór pokoi */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Wybierz pokoje</label>
+            <select
+              onChange={handleAddRoom}
+              className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500"
+              defaultValue=""
+            >
+              <option value="" disabled>Wybierz pokój</option>
+              {rooms.map((r) => (
+                <option key={r.room_id} value={r.room_id}>{r.name}</option>
+              ))}
+            </select>
+
+            {/* Lista wybranych pokoi */}
+            <div className="flex flex-wrap mt-2 gap-2">
+              {selectedRooms.map((r) => (
+                <div
+                  key={r.room_id}
+                  className="flex items-center bg-blue-100 text-blue-800 px-2 py-1 rounded-full"
+                >
+                  <span>{r.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveRoom(r.room_id)}
+                    className="ml-2 text-blue-800 font-bold"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
         <button

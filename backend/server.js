@@ -13,6 +13,7 @@ const PORT = 4000
 
 app.use(cors());
 app.use(express.json())
+app.set('trust proxy', 1);
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -143,6 +144,7 @@ app.post('/qrcode_generation', async (req, res) => {
     }
 
     const { recipient_info, email, valid_from, valid_until, usage_limit = 1, credential_id, metadata = {}, issued_by } = req.body;
+    console.log(metadata)
 
     // Generate token
     const token = crypto.randomBytes(16).toString("hex");
@@ -155,7 +157,7 @@ app.post('/qrcode_generation', async (req, res) => {
       valid_until: toUTCISOString(valid_until),
       usage_limit,
       recipient_info: recipient_info || email || null,
-      metadata: { ...metadata, token },
+      metadata: { ...metadata },
       issued_by: issued_by || null,
     };
 
