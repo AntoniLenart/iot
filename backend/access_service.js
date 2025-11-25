@@ -3,6 +3,7 @@ import express from 'express'
 import dotenv from 'dotenv'
 import rateLimit from 'express-rate-limit'
 import pkg from 'pg';
+import cors from 'cors'
 const { Pool } = pkg;
 
 dotenv.config()

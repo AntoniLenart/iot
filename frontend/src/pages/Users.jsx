@@ -23,7 +23,7 @@ export default function Users() {
   // Fetch users from the database on component mount
   const fetchUsers = async () => {
     try {
-      const response = await fetch('http://localhost:4000/api/v1/users/list');
+      const response = await fetch(SERVER_ENDPOINT + '/api/v1/users/list');
       if (!response.ok) throw new Error('Failed to fetch users');
       const data = await response.json();
       setUsers(data.users || []);

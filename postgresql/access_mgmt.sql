@@ -71,19 +71,11 @@ CREATE INDEX IF NOT EXISTS ix_devices_type ON devices (device_type);
 CREATE INDEX IF NOT EXISTS ix_devices_location ON devices (location);
 CREATE INDEX IF NOT EXISTS ix_devices_metadata_gin ON devices USING gin (metadata);
 
--- TABLE: buildings (budynki)
-CREATE TABLE IF NOT EXISTS buildings (
-  building_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name text NOT NULL,
-  address text,
-  metadata jsonb DEFAULT '{}'
-);
-
 -- TABLE: rooms (pokoje)
 CREATE TABLE IF NOT EXISTS rooms (
   room_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  building_id uuid REFERENCES buildings(building_id) ON DELETE SET NULL,
   name text NOT NULL,
+  description text,
   floor text,
   capacity int,
   metadata jsonb DEFAULT '{}'
@@ -94,9 +86,7 @@ CREATE TABLE IF NOT EXISTS doors (
   door_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   room_id uuid REFERENCES rooms(room_id) ON DELETE CASCADE,
   name text NOT NULL,                   -- np. "Drzwi wejściowe A2"
-  hardware_id uuid REFERENCES devices(device_id) ON DELETE SET NULL,
   door_type text,                       -- np. "wewnętrzne","zewnętrzne"
-  is_locked boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -143,27 +133,15 @@ CREATE TABLE IF NOT EXISTS access_policies (
   metadata jsonb DEFAULT '{}'          -- Dni tygodnia i czas: {"active_days": true, "active_times": true, "days": {"0": [{"start": "08:00", "end": "12:00"}, {"start": "13:00", "end": "18:00"}]}} (multiple ranges per day allowed)
 );
 
--- TABLE: policy_rooms (pokoje w politykach dostępu)
-CREATE TABLE IF NOT EXISTS policy_rooms (
-  policy_room_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  policy_id uuid REFERENCES access_policies(policy_id) ON DELETE CASCADE ON UPDATE CASCADE,
+-- TABLE: policy_rules (nowa tabela dla reguł polityk)
+CREATE TABLE IF NOT EXISTS policy_rules (
+  policy_rule_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  policy_id uuid REFERENCES access_policies(policy_id) ON DELETE CASCADE,
   room_id uuid REFERENCES rooms(room_id) ON DELETE CASCADE,
-  include_subdoors boolean NOT NULL DEFAULT true,  -- czy automatycznie obejmuje wszystkie drzwi tego pokoju
   is_active boolean NOT NULL DEFAULT true,
+  rules jsonb DEFAULT '{}',            
   metadata jsonb DEFAULT '{}'
 );
-
--- TABLE: policy_doors (drzwi w politykach dostępu)
-CREATE TABLE IF NOT EXISTS policy_doors (
-  policy_door_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  policy_room_id uuid REFERENCES policy_rooms(policy_room_id) ON DELETE CASCADE ON UPDATE CASCADE,
-  door_id uuid REFERENCES doors(door_id) ON DELETE CASCADE,
-  is_active boolean NOT NULL DEFAULT true,
-  metadata jsonb DEFAULT '{}'
-);
-
--- DROP TABLE IF EXISTS policy_time_ranges;
--- DROP TABLE IF EXISTS policy_days;
 
 -- TABLE LINK: group_policies (powiązanie grup -> polityki)
 CREATE TABLE IF NOT EXISTS group_policies (
@@ -350,6 +328,18 @@ CREATE TABLE IF NOT EXISTS admin_audit (
 
 CREATE INDEX IF NOT EXISTS ix_admin_audit_time ON admin_audit (occurred_at);
 
+-- TABLE: svg_files (przechowywanie plików SVG)
+CREATE TABLE IF NOT EXISTS svg_files (
+  svg_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  filename text NOT NULL,
+  description text,
+  content text NOT NULL,                 -- zawartość pliku SVG jako tekst
+  added_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ix_svg_files_added_by ON svg_files (added_by);
+CREATE INDEX IF NOT EXISTS ix_svg_files_filename ON svg_files (filename);
 
 -- TRIGGER FUNCTION: update timestamp automatically
 CREATE OR REPLACE FUNCTION set_updated_at()
