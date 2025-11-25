@@ -873,6 +873,21 @@ router.post('/user_access_groups/remove', ensureJson, async (req, res) => {
     }
 });
 
+router.get('/user_access_groups/get', async (req, res) => {
+    const { group_id } = req.query;
+    if (!group_id) return res.status(400).json({ error: 'group_id is required' });
+    try {
+        const result = await pool.query('SELECT * FROM access_mgmt.user_access_groups WHERE group_id = $1', [group_id]);
+        if (result.rowCount === 0) return res.status(404).json({ error: 'user_group not found' });
+        res.status(200).json({ 
+            users: result.rows
+        });
+    } catch (err) {
+        console.error('DB error:', err);
+        res.status(500).json({ error: 'database error' });
+    }
+});
+
 // ---- ACCESS_POLICIES ----
 router.get('/access_policies/list', async (req, res) => {
     try {
@@ -959,12 +974,14 @@ router.get('/policy_rules/list', async (req, res) => {
 });
 
 router.get('/policy_rules/get', async (req, res) => {
-    const { policy_rule_id } = req.query;
-    if (!policy_rule_id) return res.status(400).json({ error: 'policy_rule_id is required' });
+    const { policy_id } = req.query;
+    if (!policy_id) return res.status(400).json({ error: 'policy_id is required' });
     try {
-        const result = await pool.query('SELECT * FROM access_mgmt.policy_rules WHERE policy_rule_id = $1', [policy_rule_id]);
+        const result = await pool.query('SELECT * FROM access_mgmt.policy_rules WHERE policy_id = $1', [policy_id]);
         if (result.rowCount === 0) return res.status(404).json({ error: 'policy_rule not found' });
-        res.status(200).json({ policy_rule: result.rows[0] });
+        res.status(200).json({ 
+            policy_rules: result.rows
+        });
     } catch (err) {
         console.error('DB error:', err);
         res.status(500).json({ error: 'database error' });
@@ -1052,6 +1069,19 @@ router.post('/group_policies/create', ensureJson, async (req, res) => {
         const values = [group_id, policy_id];
         const result = await pool.query(insert, values);
         res.status(201).json({ group_policy: result.rows[0] });
+    } catch (err) {
+        console.error('DB error:', err);
+        res.status(500).json({ error: 'database error' });
+    }
+});
+
+router.get('/group_policies/get', async (req, res) => {
+    const { group_id } = req.query;
+    if (!group_id) return res.status(400).json({ error: 'group_id is required' });
+    try {
+        const result = await pool.query('SELECT * FROM access_mgmt.group_policies WHERE group_id = $1', [group_id]);
+        if (result.rowCount === 0) return res.status(404).json({ error: 'group_policy not found' });
+        res.status(200).json({ group_policy: result.rows[0] });
     } catch (err) {
         console.error('DB error:', err);
         res.status(500).json({ error: 'database error' });

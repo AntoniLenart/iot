@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS policy_rules (
   policy_id uuid REFERENCES access_policies(policy_id) ON DELETE CASCADE,
   room_id uuid REFERENCES rooms(room_id) ON DELETE CASCADE,
   is_active boolean NOT NULL DEFAULT true,
-  rules jsonb DEFAULT '{}',             -- Struktura JSON dla reguł: {"default_action": {}, "monday": {"default_action": {}, "range1": {}, ...}, ...}
+  rules jsonb DEFAULT '{}',            
   metadata jsonb DEFAULT '{}'
 );
 

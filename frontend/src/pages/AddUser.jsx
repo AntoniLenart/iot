@@ -30,9 +30,10 @@ export default function AddUser() {
   // For RFID user list purpose
   const fetchUsers = async () => {
     try {
-      const response = await fetch(SERVER_ENDPOINT + 'api/v1/users/list');
+      const response = await fetch(SERVER_ENDPOINT + '/api/v1/users/list');
       if (!response.ok) throw new Error('Failed to fetch users');
       const data = await response.json();
+      console.log(data)
       setUsers(data.users || []);
     } catch (err) {
       setError(err.message);
