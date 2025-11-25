@@ -543,79 +543,6 @@ router.get('/reservations/get', async (req, res) => {
     }
 });
 
-// ---- BUILDINGS ----
-router.get('/buildings/list', async (req, res) => {
-    try {
-        const result = await pool.query('SELECT * FROM access_mgmt.buildings ORDER BY building_id ASC');
-        res.status(200).json({ buildings: result.rows });
-    } catch (err) {
-        console.error('DB error:', err);
-        res.status(500).json({ error: 'database error' });
-    }
-});
-
-router.get('/buildings/get', async (req, res) => {
-    const { building_id } = req.query;
-    if (!building_id) return res.status(400).json({ error: 'building_id is required' });
-    try {
-        const result = await pool.query('SELECT * FROM access_mgmt.buildings WHERE building_id = $1', [building_id]);
-        if (result.rowCount === 0) return res.status(404).json({ error: 'building not found' });
-        res.status(200).json({ building: result.rows[0] });
-    } catch (err) {
-        console.error('DB error:', err);
-        res.status(500).json({ error: 'database error' });
-    }
-});
-
-router.post('/buildings/create', ensureJson, async (req, res) => {
-    const { name, address, metadata } = req.body;
-    if (!name) return res.status(400).json({ error: 'name is required' });
-    try {
-        const insert = `INSERT INTO access_mgmt.buildings (name, address, metadata) VALUES ($1,$2,$3) RETURNING *`;
-        const values = [name, address || null, metadata || {}];
-        const result = await pool.query(insert, values);
-        res.status(201).json({ building: result.rows[0] });
-    } catch (err) {
-        console.error('DB error:', err);
-        res.status(500).json({ error: 'database error' });
-    }
-});
-
-router.post('/buildings/remove', ensureJson, async (req, res) => {
-    const { building_id } = req.body;
-    if (!building_id) return res.status(400).json({ error: 'building_id is required' });
-    try {
-        const result = await pool.query('DELETE FROM access_mgmt.buildings WHERE building_id = $1 RETURNING building_id', [building_id]);
-        if (result.rowCount === 0) return res.status(404).json({ error: 'building not found' });
-        res.status(200).json({ deleted: result.rows[0].building_id });
-    } catch (err) {
-        console.error('DB error:', err);
-        res.status(500).json({ error: 'database error' });
-    }
-});
-
-router.patch('/buildings/update', ensureJson, async (req, res) => {
-    const { building_id, ...fields } = req.body;
-    if (!building_id) return res.status(400).json({ error: 'building_id is required' });
-    const allowed = ['name','address','metadata'];
-    const sets = []; const values = []; let idx = 1;
-    for (const key of Object.keys(fields)) {
-        if (!allowed.includes(key)) continue;
-        sets.push(`${key} = $${idx}`); values.push(fields[key]); idx++;
-    }
-    if (sets.length === 0) return res.status(400).json({ error: 'no updatable fields provided' });
-    const sql = `UPDATE access_mgmt.buildings SET ${sets.join(', ')} WHERE building_id = $${idx} RETURNING *`;
-    values.push(building_id);
-    try {
-        const result = await pool.query(sql, values);
-        if (result.rowCount === 0) return res.status(404).json({ error: 'building not found' });
-        res.status(200).json({ building: result.rows[0] });
-    } catch (err) {
-        console.error('DB error:', err);
-        res.status(500).json({ error: 'database error' });
-    }
-});
-
 // ---- ROOMS ----
 router.get('/rooms/list', async (req, res) => {
     try {
@@ -641,11 +568,11 @@ router.get('/rooms/get', async (req, res) => {
 });
 
 router.post('/rooms/create', ensureJson, async (req, res) => {
-    const { building_id, name, floor, capacity, metadata } = req.body;
+    const { name, floor, capacity, description, metadata } = req.body;
     if (!name) return res.status(400).json({ error: 'name is required' });
     try {
-        const insert = `INSERT INTO access_mgmt.rooms (building_id, name, floor, capacity, metadata) VALUES ($1,$2,$3,$4,$5) RETURNING *`;
-        const values = [building_id || null, name, floor || null, capacity || null, metadata || {}];
+        const insert = `INSERT INTO access_mgmt.rooms (name, floor, capacity, description, metadata) VALUES ($1,$2,$3,$4,$5) RETURNING *`;
+        const values = [name, floor || null, capacity || null, description || null, metadata || {}];
         const result = await pool.query(insert, values);
         res.status(201).json({ room: result.rows[0] });
     } catch (err) {
@@ -670,7 +597,7 @@ router.post('/rooms/remove', ensureJson, async (req, res) => {
 router.patch('/rooms/update', ensureJson, async (req, res) => {
     const { room_id, ...fields } = req.body;
     if (!room_id) return res.status(400).json({ error: 'room_id is required' });
-    const allowed = ['building_id','name','floor','capacity','metadata'];
+    const allowed = ['name','floor','capacity','description','metadata'];
     const sets = []; const values = []; let idx = 1;
     for (const key of Object.keys(fields)) {
         if (!allowed.includes(key)) continue;
@@ -1020,146 +947,86 @@ router.patch('/access_policies/update', ensureJson, async (req, res) => {
     }
 });
 
-// ---- POLICY_ROOMS ----
-router.get('/policy_rooms/list', async (req, res) => {
+// ---- POLICY_RULES ----
+router.get('/policy_rules/list', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM access_mgmt.policy_rooms ORDER BY policy_room_id ASC');
-        res.status(200).json({ policy_rooms: result.rows });
+        const result = await pool.query('SELECT * FROM access_mgmt.policy_rules ORDER BY policy_rule_id ASC');
+        res.status(200).json({ policy_rules: result.rows });
     } catch (err) {
         console.error('DB error:', err);
         res.status(500).json({ error: 'database error' });
     }
 });
 
-router.get('/policy_rooms/get', async (req, res) => {
-    const { policy_room_id } = req.query;
-    if (!policy_room_id) return res.status(400).json({ error: 'policy_room_id is required' });
+router.get('/policy_rules/get', async (req, res) => {
+    const { policy_rule_id } = req.query;
+    if (!policy_rule_id) return res.status(400).json({ error: 'policy_rule_id is required' });
     try {
-        const result = await pool.query('SELECT * FROM access_mgmt.policy_rooms WHERE policy_room_id = $1', [policy_room_id]);
-        if (result.rowCount === 0) return res.status(404).json({ error: 'policy_room not found' });
-        res.status(200).json({ policy_room: result.rows[0] });
+        const result = await pool.query('SELECT * FROM access_mgmt.policy_rules WHERE policy_rule_id = $1', [policy_rule_id]);
+        if (result.rowCount === 0) return res.status(404).json({ error: 'policy_rule not found' });
+        res.status(200).json({ policy_rule: result.rows[0] });
     } catch (err) {
         console.error('DB error:', err);
         res.status(500).json({ error: 'database error' });
     }
 });
 
-router.post('/policy_rooms/create', ensureJson, async (req, res) => {
-    const { policy_id, room_id, include_subdoors, is_active, metadata } = req.body;
+router.get('/policy_rules/getByRoomAndPolicy', async (req, res) => {
+    const { room_id, policy_id } = req.query;
+    if (!room_id || !policy_id) return res.status(400).json({ error: 'room_id and policy_id are required' });
+    try {
+        const result = await pool.query('SELECT * FROM access_mgmt.policy_rules WHERE room_id = $1 AND policy_id = $2', [room_id, policy_id]);
+        if (result.rowCount === 0) return res.status(404).json({ error: 'policy_rule not found' });
+        res.status(200).json({ policy_rule: result.rows[0] });
+    } catch (err) {
+        console.error('DB error:', err);
+        res.status(500).json({ error: 'database error' });
+    }
+});
+
+router.post('/policy_rules/create', ensureJson, async (req, res) => {
+    const { policy_id, room_id, is_active, rules, metadata } = req.body;
     if (!policy_id || !room_id) return res.status(400).json({ error: 'policy_id and room_id are required' });
     try {
-        const insert = `INSERT INTO access_mgmt.policy_rooms (policy_id, room_id, include_subdoors, is_active, metadata) VALUES ($1,$2,$3,$4,$5) RETURNING *`;
-        const values = [policy_id, room_id, include_subdoors !== undefined ? include_subdoors : true, is_active !== undefined ? is_active : true, metadata || {}];
+        const insert = `INSERT INTO access_mgmt.policy_rules (policy_id, room_id, is_active, rules, metadata) VALUES ($1,$2,$3,$4,$5) RETURNING *`;
+        const values = [policy_id, room_id, is_active !== undefined ? is_active : true, rules || {}, metadata || {}];
         const result = await pool.query(insert, values);
-        res.status(201).json({ policy_room: result.rows[0] });
+        res.status(201).json({ policy_rule: result.rows[0] });
     } catch (err) {
         console.error('DB error:', err);
         res.status(500).json({ error: 'database error' });
     }
 });
 
-router.post('/policy_rooms/remove', ensureJson, async (req, res) => {
-    const { policy_room_id } = req.body;
-    if (!policy_room_id) return res.status(400).json({ error: 'policy_room_id is required' });
+router.post('/policy_rules/remove', ensureJson, async (req, res) => {
+    const { policy_rule_id } = req.body;
+    if (!policy_rule_id) return res.status(400).json({ error: 'policy_rule_id is required' });
     try {
-        const result = await pool.query('DELETE FROM access_mgmt.policy_rooms WHERE policy_room_id = $1 RETURNING policy_room_id', [policy_room_id]);
-        if (result.rowCount === 0) return res.status(404).json({ error: 'policy_room not found' });
-        res.status(200).json({ deleted: result.rows[0].policy_room_id });
+        const result = await pool.query('DELETE FROM access_mgmt.policy_rules WHERE policy_rule_id = $1 RETURNING policy_rule_id', [policy_rule_id]);
+        if (result.rowCount === 0) return res.status(404).json({ error: 'policy_rule not found' });
+        res.status(200).json({ deleted: result.rows[0].policy_rule_id });
     } catch (err) {
         console.error('DB error:', err);
         res.status(500).json({ error: 'database error' });
     }
 });
 
-router.patch('/policy_rooms/update', ensureJson, async (req, res) => {
-    const { policy_room_id, ...fields } = req.body;
-    if (!policy_room_id) return res.status(400).json({ error: 'policy_room_id is required' });
-    const allowed = ['policy_id','room_id','include_subdoors','is_active','metadata'];
+router.patch('/policy_rules/update', ensureJson, async (req, res) => {
+    const { policy_rule_id, ...fields } = req.body;
+    if (!policy_rule_id) return res.status(400).json({ error: 'policy_rule_id is required' });
+    const allowed = ['policy_id','room_id','is_active','rules','metadata'];
     const sets = []; const values = []; let idx = 1;
     for (const key of Object.keys(fields)) {
         if (!allowed.includes(key)) continue;
         sets.push(`${key} = $${idx}`); values.push(fields[key]); idx++;
     }
     if (sets.length === 0) return res.status(400).json({ error: 'no updatable fields provided' });
-    const sql = `UPDATE access_mgmt.policy_rooms SET ${sets.join(', ')} WHERE policy_room_id = $${idx} RETURNING *`;
-    values.push(policy_room_id);
+    const sql = `UPDATE access_mgmt.policy_rules SET ${sets.join(', ')} WHERE policy_rule_id = $${idx} RETURNING *`;
+    values.push(policy_rule_id);
     try {
         const result = await pool.query(sql, values);
-        if (result.rowCount === 0) return res.status(404).json({ error: 'policy_room not found' });
-        res.status(200).json({ policy_room: result.rows[0] });
-    } catch (err) {
-        console.error('DB error:', err);
-        res.status(500).json({ error: 'database error' });
-    }
-});
-
-// ---- POLICY_DOORS ----
-router.get('/policy_doors/list', async (req, res) => {
-    try {
-        const result = await pool.query('SELECT * FROM access_mgmt.policy_doors ORDER BY policy_door_id ASC');
-        res.status(200).json({ policy_doors: result.rows });
-    } catch (err) {
-        console.error('DB error:', err);
-        res.status(500).json({ error: 'database error' });
-    }
-});
-
-router.get('/policy_doors/get', async (req, res) => {
-    const { policy_door_id } = req.query;
-    if (!policy_door_id) return res.status(400).json({ error: 'policy_door_id is required' });
-    try {
-        const result = await pool.query('SELECT * FROM access_mgmt.policy_doors WHERE policy_door_id = $1', [policy_door_id]);
-        if (result.rowCount === 0) return res.status(404).json({ error: 'policy_door not found' });
-        res.status(200).json({ policy_door: result.rows[0] });
-    } catch (err) {
-        console.error('DB error:', err);
-        res.status(500).json({ error: 'database error' });
-    }
-});
-
-router.post('/policy_doors/create', ensureJson, async (req, res) => {
-    const { policy_room_id, door_id, is_active, metadata } = req.body;
-    if (!policy_room_id || !door_id) return res.status(400).json({ error: 'policy_room_id and door_id are required' });
-    try {
-        const insert = `INSERT INTO access_mgmt.policy_doors (policy_room_id, door_id, is_active, metadata) VALUES ($1,$2,$3,$4) RETURNING *`;
-        const values = [policy_room_id, door_id, is_active !== undefined ? is_active : true, metadata || {}];
-        const result = await pool.query(insert, values);
-        res.status(201).json({ policy_door: result.rows[0] });
-    } catch (err) {
-        console.error('DB error:', err);
-        res.status(500).json({ error: 'database error' });
-    }
-});
-
-router.post('/policy_doors/remove', ensureJson, async (req, res) => {
-    const { policy_door_id } = req.body;
-    if (!policy_door_id) return res.status(400).json({ error: 'policy_door_id is required' });
-    try {
-        const result = await pool.query('DELETE FROM access_mgmt.policy_doors WHERE policy_door_id = $1 RETURNING policy_door_id', [policy_door_id]);
-        if (result.rowCount === 0) return res.status(404).json({ error: 'policy_door not found' });
-        res.status(200).json({ deleted: result.rows[0].policy_door_id });
-    } catch (err) {
-        console.error('DB error:', err);
-        res.status(500).json({ error: 'database error' });
-    }
-});
-
-router.patch('/policy_doors/update', ensureJson, async (req, res) => {
-    const { policy_door_id, ...fields } = req.body;
-    if (!policy_door_id) return res.status(400).json({ error: 'policy_door_id is required' });
-    const allowed = ['policy_room_id','door_id','is_active','metadata'];
-    const sets = []; const values = []; let idx = 1;
-    for (const key of Object.keys(fields)) {
-        if (!allowed.includes(key)) continue;
-        sets.push(`${key} = $${idx}`); values.push(fields[key]); idx++;
-    }
-    if (sets.length === 0) return res.status(400).json({ error: 'no updatable fields provided' });
-    const sql = `UPDATE access_mgmt.policy_doors SET ${sets.join(', ')} WHERE policy_door_id = $${idx} RETURNING *`;
-    values.push(policy_door_id);
-    try {
-        const result = await pool.query(sql, values);
-        if (result.rowCount === 0) return res.status(404).json({ error: 'policy_door not found' });
-        res.status(200).json({ policy_door: result.rows[0] });
+        if (result.rowCount === 0) return res.status(404).json({ error: 'policy_rule not found' });
+        res.status(200).json({ policy_rule: result.rows[0] });
     } catch (err) {
         console.error('DB error:', err);
         res.status(500).json({ error: 'database error' });
@@ -1625,6 +1492,79 @@ router.patch('/credential_policies/update', ensureJson, async (req, res) => {
         const result = await pool.query(sql, values);
         if (result.rowCount === 0) return res.status(404).json({ error: 'credential_policy not found' });
         res.status(200).json({ credential_policy: result.rows[0] });
+    } catch (err) {
+        console.error('DB error:', err);
+        res.status(500).json({ error: 'database error' });
+    }
+});
+
+// ---- SVG_FILES ----
+router.get('/svg_files/list', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM access_mgmt.svg_files ORDER BY svg_id ASC');
+        res.status(200).json({ svg_files: result.rows });
+    } catch (err) {
+        console.error('DB error:', err);
+        res.status(500).json({ error: 'database error' });
+    }
+});
+
+router.post('/svg_files/create', ensureJson, async (req, res) => {
+    const { filename, description, content, added_by, metadata } = req.body;
+    if (!filename || !content) return res.status(400).json({ error: 'filename and content are required' });
+    try {
+        const insert = `INSERT INTO access_mgmt.svg_files (filename, description, content, added_by, metadata) VALUES ($1,$2,$3,$4,$5) RETURNING *`;
+        const values = [filename, description || null, content, added_by || null, metadata || {}];
+        const result = await pool.query(insert, values);
+        res.status(201).json({ svg_file: result.rows[0] });
+    } catch (err) {
+        console.error('DB error:', err);
+        res.status(500).json({ error: 'database error' });
+    }
+});
+
+router.post('/svg_files/remove', ensureJson, async (req, res) => {
+    const { svg_id } = req.body;
+    if (!svg_id) return res.status(400).json({ error: 'svg_id is required' });
+    try {
+        const result = await pool.query('DELETE FROM access_mgmt.svg_files WHERE svg_id = $1 RETURNING svg_id', [svg_id]);
+        if (result.rowCount === 0) return res.status(404).json({ error: 'svg_file not found' });
+        res.status(200).json({ deleted: result.rows[0].svg_id });
+    } catch (err) {
+        console.error('DB error:', err);
+        res.status(500).json({ error: 'database error' });
+    }
+});
+
+router.patch('/svg_files/update', ensureJson, async (req, res) => {
+    const { svg_id, ...fields } = req.body;
+    if (!svg_id) return res.status(400).json({ error: 'svg_id is required' });
+    const allowed = ['filename','description','content','added_by','is_active','metadata'];
+    const sets = []; const values = []; let idx = 1;
+    for (const key of Object.keys(fields)) {
+        if (!allowed.includes(key)) continue;
+        sets.push(`${key} = $${idx}`); values.push(fields[key]); idx++;
+    }
+    if (sets.length === 0) return res.status(400).json({ error: 'no updatable fields provided' });
+    const sql = `UPDATE access_mgmt.svg_files SET ${sets.join(', ')} WHERE svg_id = $${idx} RETURNING *`;
+    values.push(svg_id);
+    try {
+        const result = await pool.query(sql, values);
+        if (result.rowCount === 0) return res.status(404).json({ error: 'svg_file not found' });
+        res.status(200).json({ svg_file: result.rows[0] });
+    } catch (err) {
+        console.error('DB error:', err);
+        res.status(500).json({ error: 'database error' });
+    }
+});
+
+router.get('/svg_files/get', async (req, res) => {
+    const { svg_id } = req.query;
+    if (!svg_id) return res.status(400).json({ error: 'svg_id is required' });
+    try {
+        const result = await pool.query('SELECT * FROM access_mgmt.svg_files WHERE svg_id = $1', [svg_id]);
+        if (result.rowCount === 0) return res.status(404).json({ error: 'svg_file not found' });
+        res.status(200).json({ svg_file: result.rows[0] });
     } catch (err) {
         console.error('DB error:', err);
         res.status(500).json({ error: 'database error' });
