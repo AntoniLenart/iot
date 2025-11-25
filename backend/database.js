@@ -62,7 +62,7 @@ router.post('/users/create', ensureJson, async (req, res) => {
     const emailRegex = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
     const phoneRegex = /^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{3,6}$/;
     const nameRegex = /^[A-Za-zÀ-ÿ\-]{2,100}$/;
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,100}$/;
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]{8,100}$/;
 
     if (!nameRegex.test(first_name)) {
         return res.status(400).json({ error: 'Invalid first name format' });
@@ -882,6 +882,35 @@ router.get('/user_access_groups/get', async (req, res) => {
         res.status(200).json({ 
             users: result.rows
         });
+    } catch (err) {
+        console.error('DB error:', err);
+        res.status(500).json({ error: 'database error' });
+    }
+});
+
+router.get('/user_access_policies/rooms', async (req, res) => {
+    const { user_id } = req.query;
+
+    if (!user_id) {
+        return res.status(400).json({ error: 'user_id jest wymagane w query parameter.' });
+    }
+
+    const sqlQuery = `
+        SELECT DISTINCT pr.room_id
+        FROM access_mgmt.user_access_groups uag
+        JOIN access_mgmt.group_policies gp ON uag.group_id = gp.group_id
+        JOIN access_mgmt.policy_rules pr ON gp.policy_id = pr.policy_id
+        WHERE uag.user_id = $1;
+    `;
+
+    try {
+        const result = await pool.query(sqlQuery, [user_id]);
+        const roomIds = result.rows.map(row => row.room_id);
+
+        res.status(200).json({
+            room_ids: roomIds 
+        });
+
     } catch (err) {
         console.error('DB error:', err);
         res.status(500).json({ error: 'database error' });

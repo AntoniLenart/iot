@@ -18,15 +18,42 @@ export default function QRCodes() {
   const [selectedRooms, setSelectedRooms] = useState([]);
 
   const fetchRooms = async () => {
-    try {
-      const response = await fetch(SERVER_ENDPOINT + '/api/v1/rooms/list');
-      if (!response.ok) throw new Error('Nie udało się pobrać listy pokoi');
-      const data = await response.json();
-      setRooms(data.rooms || []);
-    } catch (err) {
-      setMessage(err.message);
+    const userId = JSON.parse(localStorage.getItem('user')).user_id;
+    
+    if (!userId) {
+        setMessage('Błąd: Brak ID zalogowanego użytkownika. Nie można ustalić dostępu do pokoi.');
+        setRooms([]);
+        return;
     }
-  };
+    
+    try {
+        const allowedRoomsResponse = await fetch(`${SERVER_ENDPOINT}/api/v1/user_access_policies/rooms?user_id=${userId}`);
+        
+        if (!allowedRoomsResponse.ok) {
+            const errorData = await allowedRoomsResponse.json().catch(() => ({}));
+            throw new Error(`Błąd: Nie udało się pobrać dozwolonych ID pokojów. ${errorData.error || allowedRoomsResponse.statusText}`);
+        }
+        
+        const allowedData = await allowedRoomsResponse.json();
+        const allowedRoomIds = allowedData.room_ids || []; 
+      
+        const allRoomsResponse = await fetch(SERVER_ENDPOINT + '/api/v1/rooms/list');
+        if (!allRoomsResponse.ok) throw new Error('Błąd: Nie udało się pobrać pełnej listy pokojów.');
+        
+        const allRoomsData = await allRoomsResponse.json();
+        const allRooms = allRoomsData.rooms || [];
+
+        const filteredRooms = allRooms.filter(room => 
+            allowedRoomIds.includes(room.room_id)
+        );
+
+        setRooms(filteredRooms);
+        
+    } catch (err) {
+        setMessage(err.message);
+        setRooms([]);
+    }
+};
 
   useEffect(() => {
     fetchRooms();

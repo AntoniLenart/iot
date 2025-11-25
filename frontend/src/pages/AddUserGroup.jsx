@@ -315,6 +315,29 @@ export default function UserGroupsPage() {
     setLoading(true);
     setMessage("");
 
+    const activeDaysCount = Object.values(weekDays).filter(v => v).length;
+
+    if (!groupFormData.name) {
+        setMessage("Błąd walidacji: Nazwa grupy jest wymagana.");
+        setLoading(false);
+        return;
+    }
+    if (activeDaysCount === 0) {
+        setMessage("Błąd walidacji: Wybierz co najmniej jeden dzień obowiązywania.");
+        setLoading(false);
+        return;
+    }
+    if (!hours.time_from || !hours.time_to) {
+        setMessage("Błąd walidacji: Godziny obowiązywania (Od/Do) są wymagane.");
+        setLoading(false);
+        return;
+    }
+    if (selectedRooms.length === 0) {
+        setMessage("Błąd walidacji: Wybierz co najmniej jeden pokój dla tej grupy.");
+        setLoading(false);
+        return;
+    }
+
     try {
         const groupPayload = {
             name: groupFormData.name,
