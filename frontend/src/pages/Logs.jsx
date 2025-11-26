@@ -21,7 +21,6 @@ export default function Logs() {
         credentialsResponse,
         devicesResponse,
         qrResponse,
-        buildingsResponse,
         roomsResponse,
         doorsResponse,
         desksResponse,
@@ -33,21 +32,19 @@ export default function Logs() {
         fetch(SERVER_ENDPOINT + '/api/v1/credentials/list'),
         fetch(SERVER_ENDPOINT + '/api/v1/devices/list'),
         fetch(SERVER_ENDPOINT + '/api/v1/qr/list'),
-        fetch(SERVER_ENDPOINT + '/api/v1/buildings/list'),
         fetch(SERVER_ENDPOINT + '/api/v1/rooms/list'),
         fetch(SERVER_ENDPOINT + '/api/v1/doors/list'),
         fetch(SERVER_ENDPOINT + '/api/v1/desks/list'),
         fetch(SERVER_ENDPOINT + '/api/v1/user_groups/list'),
         fetch(SERVER_ENDPOINT + '/api/v1/access_policies/list')
       ]);
-      if (!logsResponse.ok || !usersResponse.ok || !credentialsResponse.ok || !devicesResponse.ok || !qrResponse.ok || !buildingsResponse.ok || !roomsResponse.ok || !doorsResponse.ok || !desksResponse.ok || !userGroupsResponse.ok || !accessPoliciesResponse.ok) throw new Error('Failed to fetch data');
+      if (!logsResponse.ok || !usersResponse.ok || !credentialsResponse.ok || !devicesResponse.ok || !qrResponse.ok || !roomsResponse.ok || !doorsResponse.ok || !desksResponse.ok || !userGroupsResponse.ok || !accessPoliciesResponse.ok) throw new Error('Failed to fetch data');
       
       const logsData = await logsResponse.json();
       const usersData = await usersResponse.json();
       const credentialsData = await credentialsResponse.json();
       const devicesData = await devicesResponse.json();
       const qrData = await qrResponse.json();
-      const buildingsData = await buildingsResponse.json();
       const roomsData = await roomsResponse.json();
       const doorsData = await doorsResponse.json();
       const desksData = await desksResponse.json();
@@ -74,9 +71,6 @@ export default function Logs() {
       });
       qrData.qr_codes.forEach(item => {
         targetsMap[`qr_codes:${item.qr_id}`] = `${item.recipient_info || 'N/A'}`;
-      });
-      buildingsData.buildings.forEach(item => {
-        targetsMap[`buildings:${item.building_id}`] = `${item.name}`;
       });
       roomsData.rooms.forEach(item => {
         targetsMap[`rooms:${item.room_id}`] = `${item.name}`;
