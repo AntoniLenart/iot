@@ -15,7 +15,7 @@ app.set('trust proxy', 1)
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // max requests per IP
+  max: 1000, // max requests per IP
   message: {
     error: "Too many requests from this IP, please try again later."
   },
@@ -33,83 +33,11 @@ const pool = new Pool({
 });
 await pool.connect().then(c => c.release()) // szybki healthcheck
 
-// --- Okno rejestracji dla drzwi "add" ---
-const ENROLL_WINDOW_MS = (Number(process.env.ENROLL_WINDOW_SEC || 15)) * 1000
-let enrollOpenUntil = 0 // timestamp ms
-let enrollClient = null
+const ENROLL_WINDOW_MS = 30_000;
+let enrollOpenUntil = 0;
 
-function mapTypeToDb(typ) {
-  if (!typ) return null
-  const t = String(typ).toLowerCase()
-  if (t === 'rfid') return 'rfid_card'
-  if (t === 'finger_print' || t === 'fingerprint') return 'fingerprint'
-  if (t === 'qr' || t === 'qr_code') return 'qr_code'
-  return null
-}
-
-// --- helpery DB ---
-async function verifyRfid(identifier) {
-  const sql = `
-    SELECT 1 FROM access_mgmt.credentials
-     WHERE credential_type='rfid_card' AND identifier=$1 AND is_active=true
-    LIMIT 1`
-  const { rows } = await pool.query(sql, [identifier])
-  return rows.length > 0
-}
-
-async function verifyFingerprint(identifier) {
-  const sql = `
-    SELECT 1 FROM access_mgmt.credentials
-     WHERE credential_type='fingerprint' AND identifier=$1 AND is_active=true
-    LIMIT 1`
-  const { rows } = await pool.query(sql, [identifier])
-  return rows.length > 0
-}
-
-async function verifyQr(code) {
-  const sql = `
-    SELECT 1 FROM access_mgmt.qr_codes
-     WHERE code=$1 AND is_active=true
-       AND now() BETWEEN valid_from AND valid_until
-       AND (usage_limit IS NULL OR usage_count < usage_limit)
-    LIMIT 1`
-  const { rows } = await pool.query(sql, [code])
-  return rows.length > 0
-}
-
-async function bumpQrUsage(code) {
-  const sql = `
-    UPDATE access_mgmt.qr_codes
-       SET usage_count = usage_count + 1
-     WHERE code=$1
-       AND is_active=true
-       AND now() BETWEEN valid_from AND valid_until`
-  await pool.query(sql, [code])
-}
-
-// async function enrollCredential(credTypeDb, data) {
-//   if (credTypeDb === 'rfid_card' || credTypeDb === 'fingerprint') {
-//     const sql = `
-//       INSERT INTO access_mgmt.credentials (credential_type, identifier, is_active)
-//       VALUES ($1, $2, true)
-//       ON CONFLICT (credential_type, identifier)
-//       DO UPDATE SET is_active=true, issued_at=now()
-//       RETURNING credential_id`
-//     const { rows } = await pool.query(sql, [credTypeDb, data])
-//     return rows[0]?.credential_id || null
-//   }
-//   return null // qr_code nie rejestrujemy tą ścieżką
-// }
-
-// --- API ---
-app.get('/health', async (req, res) => {
-  res.json({
-    ok: true,
-    enrollOpenUntil,
-    now: Date.now(),
-    windowOpen: Date.now() <= enrollOpenUntil
-  })
-})
+let rfidEnrollClient = null;
+let biometricEnrollClient = null;
 
 app.get("/frontend/rfid", (req, res) => {
   res.set({
@@ -118,13 +46,12 @@ app.get("/frontend/rfid", (req, res) => {
     Connection: "keep-alive",
   });
 
-  enrollClient = res; // zapisujemy klienta (frontend)
-
-  console.log("Frontend podłączony do enroll-stream");
+  rfidEnrollClient = res;
+  console.log("[SSE] frontend connected (RFID)");
 
   req.on("close", () => {
-    console.log("Frontend odłączył się od enroll-stream");
-    enrollClient = null;
+    if (rfidEnrollClient === res) rfidEnrollClient = null;
+    console.log("[SSE] frontend disconnected (RFID)");
   });
 });
 
@@ -135,72 +62,109 @@ app.get("/frontend/biometric", (req, res) => {
     Connection: "keep-alive",
   });
 
-  enrollClient = res; // zapisujemy klienta (frontend)
-
-  console.log("Frontend podłączony do enroll-stream");
+  biometricEnrollClient = res;
+  console.log("[SSE] frontend connected (biometric)");
 
   req.on("close", () => {
-    console.log("Frontend odłączył się od enroll-stream");
-    enrollClient = null;
+    if (biometricEnrollClient === res) biometricEnrollClient = null;
+    console.log("[SSE] frontend disconnected (biometric)");
   });
 });
 
-// Otwórz okno rejestracji dla "add" (wywołuje Frontend)
-app.post('/enroll/start', (req, res) => {
-  enrollOpenUntil = Date.now() + ENROLL_WINDOW_MS
-  console.log(`[enroll] window open for ${ENROLL_WINDOW_MS/1000}s until`, new Date(enrollOpenUntil).toISOString())
-  res.json({ ok: true, until: enrollOpenUntil })
-})
+app.post("/enroll/start", (req, res) => {
+  enrollOpenUntil = Date.now() + ENROLL_WINDOW_MS;
+  console.log(`[ENROLL] Window opened for ${ENROLL_WINDOW_MS / 1000}s`);
+  res.json({ ok: true, until: enrollOpenUntil });
+});
 
-// Decyzje dla main/hr oraz zapis dla add
-app.post('/access-check', async (req, res) => {
+function mapType(type) {
+  const t = String(type || "").toLowerCase();
+  if (t === "rfid" || t === "rfid_card") return "rfid";
+  if (t === "qr" || t === "qr_code") return "qr";
+  if (t === "fingerprint" || t === "finger_print") return "fingerprint";
+  return null;
+}
+
+async function checkAccess(doorName, type, identifier) {
+  const client = await pool.connect();
   try {
-    const { type, data, door_id } = req.body || {}
-    console.log('[access-check] input:', req.body)
-
-    if (!type || !data || !door_id) {
-      return res.status(400).json({ error: 'missing type | data | door_id' })
-    }
-
-    const credTypeDb = mapTypeToDb(type)
-    if (!credTypeDb) {
-      return res.status(400).json({ error: 'unknown type', door_id })
-    }
-
-    // --- gałąź rejestracji ---
-    if (door_id === 'add') {
-      if (Date.now() <= enrollOpenUntil) {
-        if (enrollClient) {
-          enrollClient.write(
-          `data: ${JSON.stringify({ type: credTypeDb, data })}\n\n`
-           );
-        }
-      } else {
-        return res.status(202).json({ ok: false, door_id, reason: 'enroll window closed' })
-      }
-    }
-     // --- weryfikacja main/hr ---
-    let allowed = false
-    if (credTypeDb === 'rfid_card') {
-      allowed = await verifyRfid(String(data))
-    } else if (credTypeDb === 'fingerprint') {
-      allowed = await verifyFingerprint(String(data))
-    } else if (credTypeDb === 'qr_code') {
-      allowed = await verifyQr(String(data))
-      if (allowed) await bumpQrUsage(String(data))
-    }
-
-    const status = allowed ? 'allow' : 'deny'
-    return res.json({ status, door_id })
-
-  } catch (e) {
-    console.error('[access-check] error:', e)
-    return res.status(500).json({ error: 'internal' })
+    const { rows } = await client.query(
+      "SELECT access_mgmt.check_access($1,$2,$3, now()) AS allowed",
+      [doorName, type, identifier]
+    );
+    return rows[0]?.allowed === true;
+  } finally {
+    client.release();
   }
-})
+}
 
-const PORT = Number(process.env.ACCESS_SVC_PORT || 4001)
+app.get("/health", (req, res) => {
+  res.json({ status: "ok", service: "access-service" });
+});
 
+app.post("/access-check", async (req, res) => {
+  try {
+    const { door_id, type, data } = req.body || {};
+
+    if (!door_id || !type || data === undefined) {
+      return res.status(400).json({
+        status: "deny",
+        reason: "missing_parameters",
+      });
+    }
+
+    const now = Date.now();
+    const normalizedType = mapType(type);
+    const identifier = String(data);
+
+    if (door_id === "add") {
+      if (now > enrollOpenUntil) {
+        console.log("[ENROLL] attempt outside window – denied");
+        return res.json({ status: "deny", reason: "enroll_window_closed" });
+      }
+
+      const payload = JSON.stringify({
+        data: identifier,
+        type: normalizedType,
+      });
+
+      if (normalizedType === "rfid" && rfidEnrollClient) {
+        rfidEnrollClient.write(`data: ${payload}\n\n`);
+        console.log("[ENROLL] RFID sent to frontend");
+      }
+
+      if (normalizedType === "fingerprint" && biometricEnrollClient) {
+        biometricEnrollClient.write(`data: ${payload}\n\n`);
+        console.log("[ENROLL] Fingerprint sent to frontend");
+      }
+
+      return res.json({ status: "ok", mode: "enroll" });
+    }
+
+    if (normalizedType === "fingerprint") {
+      return res.json({
+        status: "deny",
+        reason: "fingerprint_not_supported_yet",
+      });
+    }
+
+     const allowed = await checkAccess(door_id, normalizedType, identifier);
+
+    console.log(
+      `[ACCESS] door=${door_id} type=${normalizedType} id=${identifier} -> ${allowed ? "ALLOW" : "DENY"}`
+    );
+
+    return res.json({
+      status: allowed ? "allow" : "deny",
+      door_id,
+    });
+  } catch (err) {
+    console.error("access-check error:", err);
+    return res.status(500).json({ status: "deny", reason: "server_error" });
+  }
+});
+
+const PORT = Number(process.env.ACCESS_SVC_PORT || 4001);
 app.listen(PORT, () => {
-  console.log(`Access service listening on http://127.0.0.1:${PORT}`)
-})
+  console.log(`Access service listening on http://127.0.0.1:${PORT}`);
+});
