@@ -169,7 +169,7 @@ export default function Dashboard() {
           <p className="text-gray-500">Ładowanie mapy...</p>
         ) : svgMarkup ? (
           <div className="w-full h-full flex justify-center items-center svg-wrapper">
-          <FloorPlan svgMarkup={svgMarkup} 
+          <FloorPlan svgMarkup={svgMarkup}
           onIdsDetected={setSvgIds}
           hoveredRoomId={hoveredRoomId}
           roomStatus={roomStatus}

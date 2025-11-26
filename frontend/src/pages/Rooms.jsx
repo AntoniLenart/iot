@@ -24,6 +24,9 @@ export default function Rooms() {
     localStorage.getItem("active_floor_id")
   );
 
+  const [modalOpen, setModalOpen] = useState(false);
+  const [roomForReservation, setRoomForReservation] = useState(null);
+
   const [svgMarkup, setSvgMarkup] = useState(() => {
     const savedPlans = JSON.parse(localStorage.getItem("floor_plans") || "[]");
     const activeId = localStorage.getItem("active_floor_id");
@@ -93,6 +96,39 @@ export default function Rooms() {
     const savedPlans = JSON.parse(localStorage.getItem("floor_plans") || "[]");
     const updatedPlans = savedPlans.filter((p) => p.id !== activeId);
 
+    const roomNames = JSON.parse(localStorage.getItem("room_names") || "{}");
+    const roomReservations = JSON.parse(localStorage.getItem("room_reservations") || "{}");
+
+    const filteredNames = {};
+    const filteredReservations = {};
+
+    Object.keys(roomNames).forEach(key => {
+      if (!key.startsWith(activeId + ":")) {
+        filteredNames[key] = roomNames[key];
+      }
+    });
+
+    Object.keys(roomReservations).forEach(key => {
+      if (!key.startsWith(activeId + ":")) {
+        filteredReservations[key] = roomReservations[key];
+      }
+    });
+
+    localStorage.setItem("room_names", JSON.stringify(filteredNames));
+    localStorage.setItem("room_reservations", JSON.stringify(filteredReservations));
+
+    const reservations = JSON.parse(localStorage.getItem("reservations") || "{}");
+
+    const filteredUserReservations = {};
+    Object.keys(reservations).forEach(userEmail => {
+      const r = reservations[userEmail];
+      if (r.floor_id !== activeId) {
+        filteredUserReservations[userEmail] = r;
+      }
+    });
+
+    localStorage.setItem("reservations", JSON.stringify(filteredUserReservations));
+
     localStorage.setItem("floor_plans", JSON.stringify(updatedPlans));
 
     if (updatedPlans.length > 0) {
@@ -145,54 +181,52 @@ export default function Rooms() {
       <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-2">
       {svgIds.map(id => {
         const key = `${activeFloorId}:${id}`;
-        const anyBusy = Object.values(roomStatus).includes("busy");
         const isThisBusy = roomStatus[key] === "busy";
+
+        const reservations = JSON.parse(localStorage.getItem("reservations") || "{}");
+        const userHasReservation = reservations[user.email] !== undefined;
+
 
         return roomNames[key] && (
           <button
             key={id}
-            disabled={anyBusy && !isThisBusy}
+            disabled={
+              (userHasReservation && !isThisBusy) || 
+              (isThisBusy && reservations[user?.email]?.room_id !== id)
+            }
             onClick={() => {
-              setRoomStatus(prev => {
-                const updated = { ...prev };
-                const isBusy = prev[key] === "busy";
+              const key = `${activeFloorId}:${id}`;
+              const roomName = roomNames[key];
 
-                // Jeśli klikamy zajęty → zwalniamy go
-                if (isBusy) {
-                  updated[key] = "free";
-                  localStorage.removeItem("current_reservation");
-                  window.dispatchEvent(new Event("room-reservations-updated"));
-                  return updated;
-                }
+              const reservations = JSON.parse(localStorage.getItem("reservations") || "{}");
+              const userAlreadyHasRoom = reservations[user.email] !== undefined;
 
-                // Jeśli klikamy wolny → ustawiamy go jako jedyny zajęty
-                updated[key] = "busy";
+              // User can't book second room
+              if (userAlreadyHasRoom && roomStatus[key] === "free") {
+                alert("Masz już aktywną rezerwację. Usuń ją, zanim zarezerwujesz kolejny pokój.");
+                return;
+              }
 
-                // Zapisujemy dane dla backendu
-                localStorage.setItem(
-                  "current_reservation",
-                  JSON.stringify({
-                    floor_id: activeFloorId,
-                    room_id: id,
-                    room_name: roomNames[key],
-                    timestamp: new Date().toISOString()
-                  })
-                );
-                window.dispatchEvent(new Event("room-reservations-updated"));
-                return updated;
-              });
+              setRoomForReservation({ id, key, roomName });
+              setModalOpen(true);
             }}
             className={`px-3 py-2 text-sm rounded font-medium transition
               ${roomStatus[key] === "free"
                 ? "bg-green-600 hover:bg-green-700 text-white"
                 : "bg-red-600 hover:bg-red-700 text-white"
               }
-              ${anyBusy && !isThisBusy ? "opacity-50 cursor-not-allowed" : ""}
+              ${userHasReservation && !isThisBusy ? "opacity-50 cursor-not-allowed" : ""}
             `}
           >
-            {roomStatus[key] === "free"
-              ? `Zarezerwuj pokój ${roomNames[key]}`
-              : `Usuń rezerwację ${roomNames[key]}`}
+            {roomStatus[key] === "free" ? (
+              `Zarezerwuj ${roomNames[key]}`
+            ) : reservations[user.email]?.room_id === id ? (
+              `Usuń rezerwację ${roomNames[key]}`
+            ) : (
+              `Pokój zajęty przez ${reservations[Object.keys(reservations).find(
+                mail => reservations[mail]?.room_id === id
+              )]?.user_name || "nieznanego użytkownika"}`
+            )}
           </button>
         );
       })}
@@ -313,6 +347,64 @@ export default function Rooms() {
       </div>
     )}
 
+    {/*Popup for reservation details */}
+    <ReservationModal
+      isOpen={modalOpen}
+      onClose={() => setModalOpen(false)}
+      user={user}
+      roomName={roomForReservation?.roomName || ""}
+      isBusy={roomStatus[roomForReservation?.key] === "busy"}
+
+      existingReservation={
+        roomStatus[roomForReservation?.key] === "busy"
+          ? JSON.parse(localStorage.getItem("reservations") || "{}")[user?.email]
+          : null
+      }
+
+      onConfirm={({ start, end, purpose }) => {
+        const { key, id, roomName } = roomForReservation;
+
+        setRoomStatus(prev => ({
+          ...prev,
+          [key]: "busy",
+        }));
+
+        const allReservations = JSON.parse(localStorage.getItem("reservations") || "{}");
+
+        allReservations[user.email] = {
+          floor_id: activeFloorId,
+          room_id: id,
+          room_name: roomName,
+          user: user?.email,
+          user_name: `${user?.first_name || ""} ${user?.last_name || ""}`.trim() || "Użytkownik",
+          start,
+          end,
+          purpose,
+          timestamp: new Date().toISOString()
+        };
+
+        localStorage.setItem("reservations", JSON.stringify(allReservations));
+
+        window.dispatchEvent(new Event("room-reservations-updated"));
+        setModalOpen(false);
+      }}
+
+      onDelete={() => {
+        const { key } = roomForReservation;
+
+        setRoomStatus(prev => ({
+          ...prev,
+          [key]: "free",
+        }));
+
+        const reservations = JSON.parse(localStorage.getItem("reservations") || "{}");
+        delete reservations[user.email];
+        localStorage.setItem("reservations", JSON.stringify(reservations));
+
+        window.dispatchEvent(new Event("room-reservations-updated"));
+        setModalOpen(false);
+      }}
+    />
 
   </div>
   {/* Bottom action buttons (import/delete) */}
@@ -398,6 +490,177 @@ function FloorList({ setSvgMarkup, setActiveFloorId }) {
             {stripExt(p.name)}
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function ReservationModal({
+  isOpen,
+  onClose,
+  onConfirm,
+  onDelete,
+  roomName,
+  user,
+  isBusy,
+  existingReservation
+}) {
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [purpose, setPurpose] = useState("");
+
+  useEffect(() => {
+    if (!isOpen || isBusy) return;
+
+    const now = new Date();
+    const inOneHour = new Date(now.getTime() + 60 * 60 * 2000); // 2 godziny do przodu
+
+    const format = (date) =>
+      date.toISOString().slice(0, 16); // yyyy-MM-ddTHH:mm
+
+    setStart(format(now));
+    setEnd(format(inOneHour));
+    setPurpose("");
+  }, [isOpen, isBusy]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white p-6 rounded-lg shadow-lg w-[350px]">
+
+        <h2 className="text-xl font-semibold mb-4">
+          {isBusy ? "Szczegóły rezerwacji" : "Rezerwacja pokoju"}
+        </h2>
+
+        {/* użytkownik */}
+        <div className="mb-2">
+          <label className="text-sm text-gray-600">Użytkownik</label>
+          <input
+            type="text"
+            value={`${user?.first_name || ""} ${user?.last_name || ""}`.trim()}
+            disabled
+            className="w-full border rounded px-3 py-2 bg-gray-100"
+          />
+        </div>
+
+        {/* pokój */}
+        <div className="mb-2">
+          <label className="text-sm text-gray-600">Pokój</label>
+          <input
+            type="text"
+            value={roomName}
+            disabled
+            className="w-full border rounded px-3 py-2 bg-gray-100"
+          />
+        </div>
+
+        {/* widoczne gdy pokój zajęty */}
+        {isBusy && existingReservation && (
+          <>
+            <div className="mb-2">
+              <label className="text-sm text-gray-600">Rezerwacja od</label>
+              <input
+                type="text"
+                disabled
+                value={existingReservation.start}
+                className="w-full border rounded px-3 py-2 bg-gray-100"
+              />
+            </div>
+
+            <div className="mb-2">
+              <label className="text-sm text-gray-600">Rezerwacja do</label>
+              <input
+                type="text"
+                disabled
+                value={existingReservation.end}
+                className="w-full border rounded px-3 py-2 bg-gray-100"
+              />
+            </div>
+
+            <div className="mb-4">
+              <label className="text-sm text-gray-600">Cel rezerwacji</label>
+              <input
+                type="text"
+                disabled
+                value={existingReservation.purpose}
+                className="w-full border rounded px-3 py-2 bg-gray-100"
+              />
+            </div>
+          </>
+        )}
+
+        {/* widoczne gdy pokój wolny */}
+        {!isBusy && (
+          <>
+            <div className="mb-2">
+              <label className="text-sm text-gray-600">Data rozpoczęcia</label>
+              <input
+                type="datetime-local"
+                className="w-full border rounded px-3 py-2"
+                value={start}
+                onChange={(e) => setStart(e.target.value)}
+              />
+            </div>
+
+            <div className="mb-2">
+              <label className="text-sm text-gray-600">Data zakończenia</label>
+              <input
+                type="datetime-local"
+                className="w-full border rounded px-3 py-2"
+                value={end}
+                min={start || undefined}
+                onChange={(e) => setEnd(e.target.value)}
+              />
+            </div>
+
+            <div className="mb-4">
+              <label className="text-sm text-gray-600">Cel rezerwacji</label>
+              <input
+                type="text"
+                className="w-full border rounded px-3 py-2"
+                value={purpose}
+                onChange={(e) => setPurpose(e.target.value)}
+              />
+            </div>
+          </>
+        )}
+
+        {/* przyciski */}
+        <div className="flex justify-end gap-2 mt-4">
+
+          {isBusy && (
+            <button
+              className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
+              onClick={onDelete}
+            >
+              Usuń rezerwację
+            </button>
+          )}
+
+          <button
+            className="px-4 py-2 rounded bg-gray-300 hover:bg-gray-400"
+            onClick={onClose}
+          >
+            Zamknij
+          </button>
+
+          {!isBusy && (
+            <button
+              disabled={!start || !end || end < start}
+              className={`px-4 py-2 rounded text-white transition ${
+                !start || !end || end < start
+                  ? "bg-blue-300 cursor-not-allowed"
+                  : "bg-blue-600 hover:bg-blue-700"
+              }`}
+              onClick={() => onConfirm({ start, end, purpose })}
+            >
+              Potwierdź
+            </button>
+          )}
+
+        </div>
+
       </div>
     </div>
   );
