@@ -37,6 +37,9 @@ export default function Rooms() {
 
   // Load floor plans on mount
   useEffect(() => {
+
+  // >>> BACKEND: TU powinna być lista planów GET /api/floors
+  // fetch(SERVER_ENDPOINT + '/api/floors')
   const savedPlans = JSON.parse(localStorage.getItem("floor_plans") || "[]");
   const activeId = localStorage.getItem("active_floor_id");
 
@@ -56,9 +59,28 @@ export default function Rooms() {
     localStorage.setItem("room_reservations", JSON.stringify(roomStatus));
   }, [roomStatus]);
 
+  // nowe use effecty
+  useEffect(() => {
+    // >>> BACKEND: TU pobierasz listę pokoi dla piętra
+    // fetch(SERVER_ENDPOINT + `/api/rooms/${activeFloorId}`)
+  }, [activeFloorId]);
+
+  useEffect(() => {
+    // >>> BACKEND: TU pobierasz rezerwacje pokoju (GET /api/reservations/{floor_id})
+    // fetch(SERVER_ENDPOINT + `/api/reservations/${activeFloorId}`)
+  }, [activeFloorId]);
+
+  useEffect(() => {
+    // >>> BACKEND: TU wysyłasz listę ID pokoi (svg_room_id)
+    // POST /api/rooms/{floor_id}/discover
+  }, [svgIds, activeFloorId]);
+
 
   // Handle uploading multiple SVG floor plans
   const handleUploadMany = async (e) => {
+
+    // >>> BACKEND: TU wysyłasz SVG do backendu (POST /api/floors)
+    // const res = await fetch(SERVER_ENDPOINT + '/api/floors', {...})
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
 
@@ -92,6 +114,7 @@ export default function Rooms() {
 
   // Remove currently active plan
   const handleResetPlan = () => {
+    // >>> BACKEND: TU usuwasz plan piętra (DELETE /api/floors/${activeFloorId}`)
     const activeId = localStorage.getItem("active_floor_id");
     const savedPlans = JSON.parse(localStorage.getItem("floor_plans") || "[]");
     const updatedPlans = savedPlans.filter((p) => p.id !== activeId);
@@ -310,6 +333,7 @@ export default function Rooms() {
             <button
             className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
             onClick={() => {
+              // >>> BACKEND: TU zapisujesz nazwę pokoju (PATCH /api/rooms/{room_id}`)
               const key = `${activeFloorId}:${editingRoomId}`;
 
               if (!editingName.trim()) {
@@ -363,7 +387,8 @@ export default function Rooms() {
 
       onConfirm={({ start, end, purpose }) => {
         const { key, id, roomName } = roomForReservation;
-
+        // >>> BACKEND: TU wysyłasz nową rezerwację (POST /api/reservations)
+        // fetch(SERVER_ENDPOINT + '/api/reservations', {...})
         setRoomStatus(prev => ({
           ...prev,
           [key]: "busy",
@@ -391,7 +416,7 @@ export default function Rooms() {
 
       onDelete={() => {
         const { key } = roomForReservation;
-
+        // >>> BACKEND: TU usuwasz rezerwację (DELETE /api/reservations/{reservation_id}`)
         setRoomStatus(prev => ({
           ...prev,
           [key]: "free",
@@ -633,6 +658,7 @@ function ReservationModal({
             <button
               className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
               onClick={onDelete}
+              // >>> BACKEND: TU usuwasz rezerwację (DELETE /api/reservations/{reservation_id}`)
             >
               Usuń rezerwację
             </button>
