@@ -537,11 +537,26 @@ function ReservationModal({
   useEffect(() => {
     if (!isOpen || isBusy) return;
 
-    const now = new Date();
-    const inOneHour = new Date(now.getTime() + 60 * 60 * 2000); // 2 godziny do przodu
+    const now = new Date("2025-08-10T22:30:00");
+    const inOneHour = new Date(now.getTime() + 60 * 60 * 1500); // default reservation for 1.5h
 
-    const format = (date) =>
-      date.toISOString().slice(0, 16); // yyyy-MM-ddTHH:mm
+    function formatLocalDateTime(date) {
+      const pad = (n) => String(n).padStart(2, "0");
+
+      return (
+        date.getFullYear() +
+        "-" +
+        pad(date.getMonth() + 1) +
+        "-" +
+        pad(date.getDate()) +
+        "T" +
+        pad(date.getHours()) +
+        ":" +
+        pad(date.getMinutes())
+      );
+    }
+    
+    const format = formatLocalDateTime;
 
     setStart(format(now));
     setEnd(format(inOneHour));
