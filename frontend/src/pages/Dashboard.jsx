@@ -72,27 +72,29 @@ export default function Dashboard() {
   };
 
    useEffect(() => {
-    const savedPlans = JSON.parse(localStorage.getItem("floor_plans") || "[]");
-
-    const savedActive = localStorage.getItem("active_floor_id");
-    const fallback = savedPlans[0]?.id || null;
-    const idToUse = savedActive || fallback;
-
-    setPlans(savedPlans);
-    setActiveId(idToUse);
-    setSvgMarkup(savedPlans.find(p => p.id === idToUse)?.svg || null);
-
-    const handleStorageChange = () => {
-      const updatedPlans = JSON.parse(localStorage.getItem("floor_plans") || "[]");
-      setPlans(updatedPlans);
-
-      const updatedActive = localStorage.getItem("active_floor_id");
-      const plan = updatedPlans.find((p) => p.id === updatedActive);
-      setActiveId(updatedActive);
-      if (plan) setSvgMarkup(plan.svg);
-
+    const fetchPlans = async () => {
+      try {
+        const response = await fetch(SERVER_ENDPOINT + '/api/v1/svg_files/list');
+        if (response.ok) {
+          const data = await response.json();
+          const fetchedPlans = data.svg_files.map(f => ({ id: f.svg_id.toString(), name: f.filename, svg: f.content }));
+          setPlans(fetchedPlans);
+          const savedActive = localStorage.getItem("active_floor_id");
+          const fallback = fetchedPlans[0]?.id || null;
+          const idToUse = savedActive || fallback;
+          setActiveId(idToUse);
+          setSvgMarkup(fetchedPlans.find(p => p.id === idToUse)?.svg || null);
+        }
+      } catch (error) {
+        console.error('Error fetching plans:', error);
+      }
     };
 
+    const handleStorageChange = () => {
+      fetchPlans();
+    };
+
+    fetchPlans();
     window.addEventListener("storage", handleStorageChange);
     window.addEventListener("floorplans-updated", handleStorageChange);
 
@@ -164,19 +166,20 @@ export default function Dashboard() {
           minHeight: "350px",
         }}
       >
-        {/*Early render lock */}
-        {!plans.length || !activeId ? (
+        {plans.length === 0 ? (
+          <p className="text-gray-500">Brak map, dodaj mapę w widoku rezerwacji.</p>
+        ) : !activeId || !svgMarkup ? (
           <p className="text-gray-500">Ładowanie mapy...</p>
-        ) : svgMarkup ? (
-          <div className="w-full h-full flex justify-center items-center svg-wrapper">
-          <FloorPlan svgMarkup={svgMarkup}
-          onIdsDetected={setSvgIds}
-          hoveredRoomId={hoveredRoomId}
-          roomStatus={roomStatus}
-          activeFloorId={activeId} />
-          </div>
         ) : (
-          <p className="text-gray-500">Brak wczytanego planu piętra</p>
+          <div className="w-full h-full flex justify-center items-center svg-wrapper">
+            <FloorPlan
+              svgMarkup={svgMarkup}
+              onIdsDetected={setSvgIds}
+              hoveredRoomId={hoveredRoomId}
+              roomStatus={roomStatus}
+              activeFloorId={activeId}
+            />
+          </div>
         )}
       </div>
 
