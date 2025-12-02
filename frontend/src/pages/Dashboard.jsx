@@ -166,19 +166,20 @@ export default function Dashboard() {
           minHeight: "350px",
         }}
       >
-        {/*Early render lock */}
-        {!plans.length || !activeId ? (
+        {plans.length === 0 ? (
+          <p className="text-gray-500">Brak map, dodaj mapę w widoku rezerwacji.</p>
+        ) : !activeId || !svgMarkup ? (
           <p className="text-gray-500">Ładowanie mapy...</p>
-        ) : svgMarkup ? (
-          <div className="w-full h-full flex justify-center items-center svg-wrapper">
-          <FloorPlan svgMarkup={svgMarkup}
-          onIdsDetected={setSvgIds}
-          hoveredRoomId={hoveredRoomId}
-          roomStatus={roomStatus}
-          activeFloorId={activeId} />
-          </div>
         ) : (
-          <p className="text-gray-500">Brak wczytanego planu piętra</p>
+          <div className="w-full h-full flex justify-center items-center svg-wrapper">
+            <FloorPlan
+              svgMarkup={svgMarkup}
+              onIdsDetected={setSvgIds}
+              hoveredRoomId={hoveredRoomId}
+              roomStatus={roomStatus}
+              activeFloorId={activeId}
+            />
+          </div>
         )}
       </div>
 
