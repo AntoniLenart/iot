@@ -138,7 +138,7 @@ export default function Rooms() {
 
           const key = `${activeFloorId}:${pathId}`;
 
-          // 🔥 każda rezerwacja = pokój zajęty (czerwony)
+          
           status[key] = "busy_now";
         });
 
@@ -397,10 +397,10 @@ else btnText = `Zarezerwuj ${roomNames[key]}`;
     });
 
     setModalOpen(true);
-    return; // ⛔️ blokuje przejście dalej
+    return; 
       }
 
-      // 🔵 normalne działanie jeśli nie ma rezerwacji
+      
       const now = Date.now();
 
       const current = roomReservations.find(r =>
