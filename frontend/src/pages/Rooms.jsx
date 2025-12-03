@@ -72,6 +72,9 @@ export default function Rooms() {
 
   const [pathToRoomId, setPathToRoomId] = useState({});
   const [reservations, setReservations] = useState([]);
+  const userHasReservation = reservations.some(
+    r => r.user_id === user?.user_id && r.status === "confirmed"
+  );
 
   // Load rooms for active floor
   useEffect(() => {
@@ -114,7 +117,7 @@ export default function Rooms() {
           r => floorRoomIds.includes(r.room_id) && r.status === 'confirmed'
         );
 
-        setReservations(allReservations); 
+        setReservations(allReservations);
 
         const status = {};
 
@@ -125,18 +128,18 @@ export default function Rooms() {
             status[key] = "free";
           }
         });
-        // Mark room busy
+
+
         floorReservations.forEach(r => {
           const pathId = Object.keys(pathToRoomId).find(
             pid => pathToRoomId[pid] === r.room_id
           );
+          if (!pathId) return;
 
-          if (pathId) {
-            const key = `${activeFloorId}:${pathId}`;
-            if (roomNames[key]) {
-              status[key] = "busy";
-            }
-          }
+          const key = `${activeFloorId}:${pathId}`;
+
+          // 🔥 każda rezerwacja = pokój zajęty (czerwony)
+          status[key] = "busy_now";
         });
 
         setRoomStatus(status);
@@ -333,59 +336,104 @@ export default function Rooms() {
       <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-2">
       {user && svgIds.map(id => {
   const key = `${activeFloorId}:${id}`;
-  const status = roomStatus[key];
-  const isOccupied = status === "busy";
 
-  // znajdź rezerwację tego pokoju, NIE tylko trwającą teraz
-  const roomReservation = reservations.find(
+  // 1) Rezerwacja użytkownika (jeśli ma)
+  const userRoomReservation = reservations.find(
     r =>
       r.room_id === pathToRoomId[id] &&
-      r.status === 'confirmed'
+      r.status === "confirmed" &&
+      r.user_id === user.user_id
   );
 
-  // czy ten użytkownik jest właścicielem rezerwacji tego pokoju
-  const isUserReservation = roomReservation?.user_id === user.user_id;
+  // 2) Rezerwacja tego pokoju — jakakolwiek
+  const roomReservations = reservations
+  .filter(r => r.room_id === pathToRoomId[id] && r.status === "confirmed")
+  .sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
 
-  // czy ten użytkownik ma jakąkolwiek rezerwację
-  const userHasReservation = reservations.some(r =>
-    r.user_id === user.user_id &&
-    r.status === 'confirmed'
-  );
+  // 3) Czy user jest właścicielem tej rezerwacji?
+  const now = Date.now();
+
+const currentReservation = roomReservations.find(r =>
+  new Date(r.start_at) <= now && new Date(r.end_at) >= now
+);
+
+const nextReservation = roomReservations.find(r =>
+  new Date(r.start_at) > now
+);
+
+const isUserReservation = !!roomReservations.find(
+  r => r.user_id === user.user_id
+);
+
+const isBusyNow = !!currentReservation;
+const isFutureReservation = !!nextReservation;
+
+
+const disabled =
+  !isUserReservation && (isBusyNow || userHasReservation);
+
+let btnText = "";
+if (isUserReservation) btnText = `Usuń rezerwację ${roomNames[key]}`;
+else if (isBusyNow) btnText = "Pokój zajęty";
+else if (isFutureReservation) btnText = " Rezerwacja";
+else btnText = `Zarezerwuj ${roomNames[key]}`;
 
   return roomNames[key] && (
     <button
       key={id}
-      disabled={
-        (userHasReservation && !isUserReservation) ||
-        (isOccupied && !isUserReservation)
-      }
+      disabled={disabled}
       onClick={() => {
-        setRoomForReservation({
-          id,
-          key,
-          roomName: roomNames[key],
-          reservation: roomReservation
-        });
-        setModalOpen(true);
+        const userReservation = reservations.find(
+    r => r.user_id === user.user_id && r.status === "confirmed"
+  );
+
+  if (userReservation) {
+    // pokaż TYLKO modal z jego rezerwacją
+    setRoomForReservation({
+      id,
+      key,
+      roomName: roomNames[key],
+      reservation: userReservation
+    });
+
+    setModalOpen(true);
+    return; // ⛔️ blokuje przejście dalej
+      }
+
+      // 🔵 normalne działanie jeśli nie ma rezerwacji
+      const now = Date.now();
+
+      const current = roomReservations.find(r =>
+        new Date(r.start_at) <= now && new Date(r.end_at) >= now
+      );
+
+      const next = roomReservations.find(r =>
+        new Date(r.start_at) > now
+      );
+
+      setRoomForReservation({
+        id,
+        key,
+        roomName: roomNames[key],
+        reservation: current || next || null
+      });
+
+      setModalOpen(true);
       }}
       className={`px-3 py-2 text-sm rounded font-medium transition
-        ${!isOccupied
-          ? "bg-green-600 hover:bg-green-700 text-white"
-          : "bg-red-600 hover:bg-red-700 text-white"
-        }
-        ${userHasReservation && !isUserReservation
-          ? "opacity-50 cursor-not-allowed"
-          : ""
-        }
-      `}
+  ${
+    isUserReservation
+      ? "bg-red-600 hover:bg-red-700"
+      : isBusyNow
+      ? "bg-red-600 hover:bg-red-700"
+      : isFutureReservation
+      ? "bg-yellow-500 hover:bg-yellow-600"
+      : "bg-green-600 hover:bg-green-700"
+  }
+  ${disabled ? "opacity-50 cursor-not-allowed" : ""}
+`}
     >
-      {!isOccupied ? (
-        `Zarezerwuj ${roomNames[key]}`
-      ) : isUserReservation ? (
-        `Usuń rezerwację ${roomNames[key]}`
-      ) : (
-        `Pokój zajęty`
-      )}
+      {btnText}
     </button>
   );
 })}
@@ -516,12 +564,23 @@ export default function Rooms() {
       onClose={() => setModalOpen(false)}
       user={user}
       roomName={roomForReservation?.roomName || ""}
-      isBusy={roomStatus[roomForReservation?.key] === "busy"}
+      isBusy={
+  (() => {
+    if (!roomForReservation?.reservation) return false;
+    const now = Date.now();
+    const start = new Date(roomForReservation.reservation.start_at).getTime();
+    const end = new Date(roomForReservation.reservation.end_at).getTime();
+    
+    return start <= now && end >= now;
+  })()
+}
 
       existingReservation={roomForReservation?.reservation || null}
+      userHasReservation={userHasReservation}
 
       onConfirm={async ({ start, end, purpose }) => {
         const { key, id } = roomForReservation;
+
         try {
           await fetch(SERVER_ENDPOINT + '/api/v1/reservations/create', {
             method: 'POST',
@@ -539,9 +598,14 @@ export default function Rooms() {
           
 
 
-          setRoomStatus(prev => ({
+          const startTs = new Date(start.replace(" ", "T") + ":00").getTime();
+            const endTs = new Date(end.replace(" ", "T") + ":00").getTime();
+            const nowTs = Date.now();
+            
+
+            setRoomStatus(prev => ({
               ...prev,
-              [key]: "busy"
+              [key]: startTs <= nowTs && endTs >= nowTs ? "busy_now" : "busy_future"
             }));
           // Refresh reservations
           const response = await fetch(SERVER_ENDPOINT + '/api/v1/reservations/list');
@@ -750,11 +814,16 @@ function ReservationModal({
   roomName,
   user,
   isBusy,
-  existingReservation
+  existingReservation,
+   userHasReservation
 }) {
+  const isUserOwnReservation =
+    existingReservation && existingReservation.user_id === user.user_id;
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [purpose, setPurpose] = useState("");
+  const [hasConflict, setHasConflict] = useState(false);
+  
 
   useEffect(() => {
     if (!isOpen || isBusy) return;
@@ -785,7 +854,26 @@ function ReservationModal({
     setPurpose("");
   }, [isOpen, isBusy]);
 
+  useEffect(() => {
+    if (!start || !end || !existingReservation) {
+      setHasConflict(false);
+      return;
+    }
+
+    const startTs = new Date(start).getTime();
+    const endTs   = new Date(end).getTime();
+
+    const rs = new Date(existingReservation.start_at).getTime();
+    const re = new Date(existingReservation.end_at).getTime();
+
+    const overlaps = !(endTs <= rs || startTs >= re);
+
+    setHasConflict(overlaps);
+  }, [start, end, existingReservation]);
+
   if (!isOpen) return null;
+
+  
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -816,6 +904,26 @@ function ReservationModal({
             className="w-full border rounded px-3 py-2 bg-gray-100"
           />
         </div>
+
+        {/* podgląd przyszłej rezerwacji */}
+          {!isBusy && existingReservation && (
+            <div className="mb-3 p-2 border rounded bg-yellow-50">
+              <p className="text-sm text-gray-700 font-medium mb-1">
+                Rezerwacja:
+              </p>
+              <p className="text-sm text-gray-600">
+                Od: <b>{existingReservation.start_at.slice(0, 16)}</b>
+              </p>
+              <p className="text-sm text-gray-600">
+                Do: <b>{existingReservation.end_at.slice(0, 16)}</b>
+              </p>
+              {existingReservation.metadata?.purpose && (
+                <p className="text-sm text-gray-600 mt-1">
+                  Cel: <i>{existingReservation.metadata.purpose}</i>
+                </p>
+              )}
+            </div>
+          )}
 
         {/* widoczne gdy pokój zajęty */}
         {isBusy && existingReservation && (
@@ -853,7 +961,7 @@ function ReservationModal({
         )}
 
         {/* widoczne gdy pokój wolny */}
-        {!isBusy && (
+        {!isUserOwnReservation && !isBusy && (
           <>
             <div className="mb-2">
               <label className="text-sm text-gray-600">Data rozpoczęcia</label>
@@ -872,9 +980,19 @@ function ReservationModal({
                 className="w-full border rounded px-3 py-2"
                 value={end}
                 min={start || undefined}
+                max={
+                  !isBusy && existingReservation
+                    ? existingReservation.start_at.slice(0, 16)
+                    : undefined
+                }
                 onChange={(e) => setEnd(e.target.value)}
               />
             </div>
+            {hasConflict && (
+            <p className="text-red-600 text-sm mt-1 mb-2">
+              Wybrany termin nachodzi na istniejącą rezerwację.
+            </p>
+          )}
 
             <div className="mb-4">
               <label className="text-sm text-gray-600">Cel rezerwacji</label>
@@ -891,7 +1009,7 @@ function ReservationModal({
         {/* przyciski */}
         <div className="flex justify-end gap-2 mt-4">
 
-          {isBusy && (
+          {existingReservation?.user_id === user.user_id && (
             <button
               className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
               onClick={onDelete}
@@ -908,7 +1026,7 @@ function ReservationModal({
             Zamknij
           </button>
 
-          {!isBusy && (
+          {!isUserOwnReservation && !isBusy && !userHasReservation &&(
             <button
               disabled={!start || !end || end < start}
               className={`px-4 py-2 rounded text-white transition ${
