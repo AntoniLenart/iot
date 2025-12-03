@@ -2,6 +2,7 @@ import FloorPlan from "../components/FloorPlan";
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../components/AuthContext";
 import { getConfig } from "../../src/config";
+import DOMPurify from "dompurify";
 
 const { SERVER_ENDPOINT } = getConfig()
 
@@ -156,7 +157,8 @@ export default function Rooms() {
 
     for (const file of files) {
       try {
-        const svg = await file.text();
+        const rawSvg = await file.text();
+        const svg = DOMPurify.sanitize(rawSvg, {USE_PROFILES: {svg: true}});
         const response = await fetch(SERVER_ENDPOINT + '/api/v1/svg_files/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
