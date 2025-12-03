@@ -1,7 +1,8 @@
 import FloorPlan from "../components/FloorPlan";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../components/AuthContext";
 import { getConfig } from "../../src/config";
+import DOMPurify from "dompurify";
 
 const { SERVER_ENDPOINT } = getConfig()
 
@@ -17,12 +18,12 @@ export default function Rooms() {
   );
   const [editingRoomId, setEditingRoomId] = useState(null);
   const [editingName, setEditingName] = useState("");
-  const [roomStatus, setRoomStatus] = useState(() =>
-    JSON.parse(localStorage.getItem("room_reservations") || "{}")
-  );
+  const [roomStatus, setRoomStatus] = useState({});
   const [activeFloorId, setActiveFloorId] = useState(() =>
     localStorage.getItem("active_floor_id")
   );
+
+  const [activeFloorName, setActiveFloorName] = useState("");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [roomForReservation, setRoomForReservation] = useState(null);
@@ -34,27 +35,119 @@ export default function Rooms() {
     return activePlan ? activePlan.svg : null;
   });
 
+  const [description, setDescription] = useState("");
+  const [currentDescription, setCurrentDescription] = useState("");
+
+  const fileInputRef = useRef(null);
 
   // Load floor plans on mount
   useEffect(() => {
-  const savedPlans = JSON.parse(localStorage.getItem("floor_plans") || "[]");
-  const activeId = localStorage.getItem("active_floor_id");
-
-  if (savedPlans.length > 0) {
-
-    const activePlan =
-      savedPlans.find((p) => p.id === activeId) || savedPlans[0];
-    if (activePlan) setSvgMarkup(activePlan.svg);
-  }
-}, []);
+    const fetchFloorPlans = async () => {
+      try {
+        const response = await fetch(SERVER_ENDPOINT + '/api/v1/svg_files/list');
+        if (response.ok) {
+          const data = await response.json();
+          const plans = data.svg_files.map(f => ({ id: f.svg_id.toString(), name: f.filename, svg: f.content }));
+          const activeId = localStorage.getItem("active_floor_id");
+          const activePlan = plans.find((p) => p.id === activeId) || plans[0];
+          if (activePlan) {
+            setSvgMarkup(activePlan.svg);
+            setActiveFloorId(activePlan.id);
+            setActiveFloorName(activePlan.name);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching floor plans:', error);
+      }
+    };
+    fetchFloorPlans();
+  }, []);
 
   useEffect(() => {
-    localStorage.setItem("room_names", JSON.stringify(roomNames));
+    // No localStorage for roomNames, handled by backend
   }, [roomNames]);
 
   useEffect(() => {
-    localStorage.setItem("room_reservations", JSON.stringify(roomStatus));
+    // No localStorage for roomStatus, handled by backend
   }, [roomStatus]);
+
+  const [pathToRoomId, setPathToRoomId] = useState({});
+  const [reservations, setReservations] = useState([]);
+  const userHasReservation = reservations.some(
+    r => r.user_id === user?.user_id && r.status === "confirmed"
+  );
+
+  // Load rooms for active floor
+  useEffect(() => {
+    const fetchRooms = async () => {
+      try {
+        const response = await fetch(SERVER_ENDPOINT + '/api/v1/rooms/list');
+        if (response.ok) {
+          const data = await response.json();
+          const roomsForFloor = data.rooms.filter(r => r.svg_id === activeFloorId);
+          const names = {};
+          const pathToRoomId = {};
+          roomsForFloor.forEach(r => {
+            if (r.metadata && r.metadata.path_id) {
+              names[`${activeFloorId}:${r.metadata.path_id}`] = r.name;
+              pathToRoomId[r.metadata.path_id] = r.room_id;
+            }
+          });
+          setRoomNames(names);
+          setPathToRoomId(pathToRoomId);
+        }
+      } catch (error) {
+        console.error('Error fetching rooms:', error);
+      }
+    };
+    if (activeFloorId) fetchRooms();
+  }, [activeFloorId]);
+
+  // Fetch reservations and set roomStatus for active floor
+  useEffect(() => {
+  if (activeFloorId && Object.keys(pathToRoomId).length > 0) {
+
+    fetch(SERVER_ENDPOINT + '/api/v1/reservations/list')
+      .then(response => response.json())
+      .then(data => {
+        const allReservations = data.reservations || [];
+        const floorRoomIds = Object.values(pathToRoomId);
+
+        // reservations only for one plan
+        const floorReservations = allReservations.filter(
+          r => floorRoomIds.includes(r.room_id) && r.status === 'confirmed'
+        );
+
+        setReservations(allReservations);
+
+        const status = {};
+
+        // 1) Default all rooms free
+        Object.entries(pathToRoomId).forEach(([pathId]) => {
+          const key = `${activeFloorId}:${pathId}`;
+          if (roomNames[key]) {
+            status[key] = "free";
+          }
+        });
+
+
+        floorReservations.forEach(r => {
+          const pathId = Object.keys(pathToRoomId).find(
+            pid => pathToRoomId[pid] === r.room_id
+          );
+          if (!pathId) return;
+
+          const key = `${activeFloorId}:${pathId}`;
+
+          
+          status[key] = "busy_now";
+        });
+
+        setRoomStatus(status);
+      })
+      .catch(error => console.error('Error fetching reservations:', error));
+  }
+}, [activeFloorId, pathToRoomId, roomNames]);
 
 
   // Handle uploading multiple SVG floor plans
@@ -62,92 +155,156 @@ export default function Rooms() {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
 
-    const existing = JSON.parse(localStorage.getItem("floor_plans") || "[]");
+    for (const file of files) {
+      try {
+        const rawSvg = await file.text();
+        const svg = DOMPurify.sanitize(rawSvg, {USE_PROFILES: {svg: true}});
+        const response = await fetch(SERVER_ENDPOINT + '/api/v1/svg_files/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: file.name, description: description || null, content: svg, added_by: user?.user_id })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          const svg_id = data.svg_file?.svg_id?.toString();
+          if (!svg_id) {
+            console.error('Invalid response: missing svg_id for file', file.name);
+            continue; // Skip room creation for this file
+          }
 
-    const loaded = await Promise.all(
-      files.map(async (file) => {
-        const svg = await file.text();
-        return {
-          id: `${file.name}-${Date.now()}-${Math.random()
-            .toString(36)
-            .slice(2, 8)}`,
-          name: file.name,
-          svg,
-        };
-      })
-    );
+          // Parse SVG to extract path IDs
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(svg, 'image/svg+xml');
+          const paths = doc.querySelectorAll('[id]');
+          const ids = Array.from(paths).map(p => p.id);
 
-    const merged = [...existing, ...loaded];
-    localStorage.setItem("floor_plans", JSON.stringify(merged));
-
-    const newActive = merged[merged.length - loaded.length].id;
-    localStorage.setItem("active_floor_id", newActive);
-
-    setSvgMarkup(loaded[0].svg);
-    setActiveFloorId(newActive);
-
-    window.dispatchEvent(new Event("floorplans-updated"));
-
-};
-
-  // Remove currently active plan
-  const handleResetPlan = () => {
-    const activeId = localStorage.getItem("active_floor_id");
-    const savedPlans = JSON.parse(localStorage.getItem("floor_plans") || "[]");
-    const updatedPlans = savedPlans.filter((p) => p.id !== activeId);
-
-    const roomNames = JSON.parse(localStorage.getItem("room_names") || "{}");
-    const roomReservations = JSON.parse(localStorage.getItem("room_reservations") || "{}");
-
-    const filteredNames = {};
-    const filteredReservations = {};
-
-    Object.keys(roomNames).forEach(key => {
-      if (!key.startsWith(activeId + ":")) {
-        filteredNames[key] = roomNames[key];
+          // Create rooms for each detected path ID
+          for (const id of ids) {
+            try {
+              await fetch(SERVER_ENDPOINT + '/api/v1/rooms/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: '', floor: file.name, svg_id: svg_id, metadata: { path_id: id } })
+              });
+            } catch (roomError) {
+              console.error('Error creating room for path ID', id, roomError);
+            }
+          }
+        } else {
+          console.error('Failed to upload file', file.name, 'Response status:', response.status);
+        }
+      } catch (error) {
+        console.error('Error uploading floor plan or creating rooms:', error);
       }
-    });
+    }
 
-    Object.keys(roomReservations).forEach(key => {
-      if (!key.startsWith(activeId + ":")) {
-        filteredReservations[key] = roomReservations[key];
+    // Reset description after upload
+    setDescription("");
+
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+
+    // Refresh plans
+    const response = await fetch(SERVER_ENDPOINT + '/api/v1/svg_files/list');
+    if (response.ok) {
+      const data = await response.json();
+      const plans = data.svg_files.map(f => ({ id: f.svg_id.toString(), name: f.filename, svg: f.content }));
+      const newActive = plans[plans.length - 1]?.id;
+      if (newActive) {
+        localStorage.setItem("active_floor_id", newActive);
+        setSvgMarkup(plans.find(p => p.id === newActive)?.svg);
+        setActiveFloorId(newActive);
       }
-    });
-
-    localStorage.setItem("room_names", JSON.stringify(filteredNames));
-    localStorage.setItem("room_reservations", JSON.stringify(filteredReservations));
-
-    const reservations = JSON.parse(localStorage.getItem("reservations") || "{}");
-
-    const filteredUserReservations = {};
-    Object.keys(reservations).forEach(userEmail => {
-      const r = reservations[userEmail];
-      if (r.floor_id !== activeId) {
-        filteredUserReservations[userEmail] = r;
-      }
-    });
-
-    localStorage.setItem("reservations", JSON.stringify(filteredUserReservations));
-
-    localStorage.setItem("floor_plans", JSON.stringify(updatedPlans));
-
-    if (updatedPlans.length > 0) {
-      const next = updatedPlans[0];
-      setSvgMarkup(next.svg);
-      localStorage.setItem("active_floor_id", next.id);
-      setActiveFloorId(next.id);
-    } else {
-      setSvgMarkup(null);
-      localStorage.removeItem("active_floor_id");
-      setActiveFloorId(null);
     }
 
     window.dispatchEvent(new Event("floorplans-updated"));
   };
 
+  // Remove currently active plan
+  const handleResetPlan = async () => {
+    const activeId = localStorage.getItem("active_floor_id");
+    if (activeId) {
+      try {
+        await fetch(SERVER_ENDPOINT + '/api/v1/svg_files/remove', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ svg_id: activeId })
+        });
+      } catch (error) {
+        console.error('Error deleting floor plan:', error);
+        return; // Stop if delete fails
+      }
+    }
+
+    // Clear all data to refresh for new floor
+    setRoomNames({});
+    setRoomStatus({});
+    setReservations([]);
+    setSvgIds([]);
+    setPathToRoomId({});
+
+    // Fetch updated plans
+    try {
+      const response = await fetch(SERVER_ENDPOINT + '/api/v1/svg_files/list');
+      if (response.ok) {
+        const data = await response.json();
+        const plans = data.svg_files.map(f => ({ id: f.svg_id.toString(), name: f.filename, svg: f.content }));
+        if (plans.length > 0) {
+          const next = plans[0];
+          setSvgMarkup(next.svg);
+          localStorage.setItem("active_floor_id", next.id);
+          setActiveFloorId(next.id);
+        } else {
+          setSvgMarkup(null);
+          localStorage.removeItem("active_floor_id");
+          setActiveFloorId(null);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching updated plans:', error);
+    }
+
+    window.dispatchEvent(new Event("floorplans-updated"));
+  };
+
+  // Load current description when activeFloorId changes
+  useEffect(() => {
+    if (activeFloorId) {
+      const fetchDescription = async () => {
+        try {
+          const response = await fetch(SERVER_ENDPOINT + '/api/v1/svg_files/get?svg_id=' + activeFloorId);
+          if (response.ok) {
+            const data = await response.json();
+            setCurrentDescription(data.svg_file.description || "");
+          }
+        } catch (error) {
+          console.error('Error fetching description:', error);
+        }
+      };
+      fetchDescription();
+    }
+  }, [activeFloorId]);
+
+  // Handle saving description
+  const handleSaveDescription = async () => {
+    if (!activeFloorId) return;
+    try {
+      await fetch(SERVER_ENDPOINT + '/api/v1/svg_files/update', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ svg_id: activeFloorId, description: currentDescription })
+      });
+      alert("Opis został zapisany.");
+    } catch (error) {
+      console.error('Error saving description:', error);
+      alert("Błąd podczas zapisywania opisu.");
+    }
+  };
 
   return (
-  <div className="p-4 flex flex-col gap-6 items-start">
+  <div className="p-4 flex flex-col gap-4 items-start">
     <div className="flex flex-row justify-center gap-6 items-start w-full">
     {/* Left side — floor plan preview */}
 <div
@@ -179,57 +336,109 @@ export default function Rooms() {
     <div className="w-[400px] flex flex-col justify-between h-[65vh]">
 
       <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-2">
-      {svgIds.map(id => {
-        const key = `${activeFloorId}:${id}`;
-        const isThisBusy = roomStatus[key] === "busy";
+      {user && svgIds.map(id => {
+  const key = `${activeFloorId}:${id}`;
 
-        const reservations = JSON.parse(localStorage.getItem("reservations") || "{}");
-        const userHasReservation = reservations[user.email] !== undefined;
+  // 1) Rezerwacja użytkownika (jeśli ma)
+  const userRoomReservation = reservations.find(
+    r =>
+      r.room_id === pathToRoomId[id] &&
+      r.status === "confirmed" &&
+      r.user_id === user.user_id
+  );
+
+  // 2) Rezerwacja tego pokoju — jakakolwiek
+  const roomReservations = reservations
+  .filter(r => r.room_id === pathToRoomId[id] && r.status === "confirmed")
+  .sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
+
+  // 3) Czy user jest właścicielem tej rezerwacji?
+  const now = Date.now();
+
+const currentReservation = roomReservations.find(r =>
+  new Date(r.start_at) <= now && new Date(r.end_at) >= now
+);
+
+const nextReservation = roomReservations.find(r =>
+  new Date(r.start_at) > now
+);
+
+const isUserReservation = !!roomReservations.find(
+  r => r.user_id === user.user_id
+);
+
+const isBusyNow = !!currentReservation;
+const isFutureReservation = !!nextReservation;
 
 
-        return roomNames[key] && (
-          <button
-            key={id}
-            disabled={
-              (userHasReservation && !isThisBusy) || 
-              (isThisBusy && reservations[user?.email]?.room_id !== id)
-            }
-            onClick={() => {
-              const key = `${activeFloorId}:${id}`;
-              const roomName = roomNames[key];
+const disabled =
+  !isUserReservation && (isBusyNow || userHasReservation);
 
-              const reservations = JSON.parse(localStorage.getItem("reservations") || "{}");
-              const userAlreadyHasRoom = reservations[user.email] !== undefined;
+let btnText = "";
+if (isUserReservation) btnText = `Usuń rezerwację ${roomNames[key]}`;
+else if (isBusyNow) btnText = "Pokój zajęty";
+else if (isFutureReservation) btnText = " Rezerwacja";
+else btnText = `Zarezerwuj ${roomNames[key]}`;
 
-              // User can't book second room
-              if (userAlreadyHasRoom && roomStatus[key] === "free") {
-                alert("Masz już aktywną rezerwację. Usuń ją, zanim zarezerwujesz kolejny pokój.");
-                return;
-              }
+  return roomNames[key] && (
+    <button
+      key={id}
+      disabled={disabled}
+      onClick={() => {
+        const userReservation = reservations.find(
+    r => r.user_id === user.user_id && r.status === "confirmed"
+  );
 
-              setRoomForReservation({ id, key, roomName });
-              setModalOpen(true);
-            }}
-            className={`px-3 py-2 text-sm rounded font-medium transition
-              ${roomStatus[key] === "free"
-                ? "bg-green-600 hover:bg-green-700 text-white"
-                : "bg-red-600 hover:bg-red-700 text-white"
-              }
-              ${userHasReservation && !isThisBusy ? "opacity-50 cursor-not-allowed" : ""}
-            `}
-          >
-            {roomStatus[key] === "free" ? (
-              `Zarezerwuj ${roomNames[key]}`
-            ) : reservations[user.email]?.room_id === id ? (
-              `Usuń rezerwację ${roomNames[key]}`
-            ) : (
-              `Pokój zajęty przez ${reservations[Object.keys(reservations).find(
-                mail => reservations[mail]?.room_id === id
-              )]?.user_name || "nieznanego użytkownika"}`
-            )}
-          </button>
-        );
-      })}
+  if (userReservation) {
+    // pokaż TYLKO modal z jego rezerwacją
+    setRoomForReservation({
+      id,
+      key,
+      roomName: roomNames[key],
+      reservation: userReservation
+    });
+
+    setModalOpen(true);
+    return; 
+      }
+
+      
+      const now = Date.now();
+
+      const current = roomReservations.find(r =>
+        new Date(r.start_at) <= now && new Date(r.end_at) >= now
+      );
+
+      const next = roomReservations.find(r =>
+        new Date(r.start_at) > now
+      );
+
+      setRoomForReservation({
+        id,
+        key,
+        roomName: roomNames[key],
+        reservation: current || next || null
+      });
+
+      setModalOpen(true);
+      }}
+      className={`px-3 py-2 text-sm rounded font-medium transition
+  ${
+    isUserReservation
+      ? "bg-red-600 hover:bg-red-700"
+      : isBusyNow
+      ? "bg-red-600 hover:bg-red-700"
+      : isFutureReservation
+      ? "bg-yellow-500 hover:bg-yellow-600"
+      : "bg-green-600 hover:bg-green-700"
+  }
+  ${disabled ? "opacity-50 cursor-not-allowed" : ""}
+`}
+    >
+      {btnText}
+    </button>
+  );
+})}
     </div>
 
     <div className="pt-3">
@@ -311,32 +520,36 @@ export default function Rooms() {
             className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
             onClick={() => {
               const key = `${activeFloorId}:${editingRoomId}`;
-
               if (!editingName.trim()) {
                 setRoomNames(prev => {
                   const updated = { ...prev };
                   delete updated[key];
                   return updated;
                 });
-
                 setRoomStatus(prev => {
                   const updated = { ...prev };
                   delete updated[key];
                   return updated;
                 });
-
               } else {
                 setRoomNames(prev => ({
                   ...prev,
                   [key]: editingName
                 }));
-
                 setRoomStatus(prev => ({
                   ...prev,
                   [key]: "free"
                 }));
               }
-
+              // Update backend
+              const roomId = pathToRoomId[editingRoomId];
+              if (roomId) {
+                fetch(SERVER_ENDPOINT + '/api/v1/rooms/update', {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ room_id: roomId, name: editingName, metadata: { path_id: editingRoomId } })
+                }).catch(error => console.error('Error updating room:', error));
+              }
               setEditingRoomId(null);
             }}
           >
@@ -353,54 +566,84 @@ export default function Rooms() {
       onClose={() => setModalOpen(false)}
       user={user}
       roomName={roomForReservation?.roomName || ""}
-      isBusy={roomStatus[roomForReservation?.key] === "busy"}
+      isBusy={
+  (() => {
+    if (!roomForReservation?.reservation) return false;
+    const now = Date.now();
+    const start = new Date(roomForReservation.reservation.start_at).getTime();
+    const end = new Date(roomForReservation.reservation.end_at).getTime();
+    
+    return start <= now && end >= now;
+  })()
+}
 
-      existingReservation={
-        roomStatus[roomForReservation?.key] === "busy"
-          ? JSON.parse(localStorage.getItem("reservations") || "{}")[user?.email]
-          : null
-      }
+      existingReservation={roomForReservation?.reservation || null}
+      userHasReservation={userHasReservation}
 
-      onConfirm={({ start, end, purpose }) => {
-        const { key, id, roomName } = roomForReservation;
+      onConfirm={async ({ start, end, purpose }) => {
+        const { key, id } = roomForReservation;
 
-        setRoomStatus(prev => ({
-          ...prev,
-          [key]: "busy",
-        }));
+        try {
+          await fetch(SERVER_ENDPOINT + '/api/v1/reservations/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              room_id: pathToRoomId[id],
+              user_id: user.user_id,
+              start_at: start,
+              end_at: end,
+              created_by: user.user_id,
+              status: 'confirmed',
+              metadata: { purpose }
+            })
+          });
+          
 
-        const allReservations = JSON.parse(localStorage.getItem("reservations") || "{}");
 
-        allReservations[user.email] = {
-          floor_id: activeFloorId,
-          room_id: id,
-          room_name: roomName,
-          user: user?.email,
-          user_name: `${user?.first_name || ""} ${user?.last_name || ""}`.trim() || "Użytkownik",
-          start,
-          end,
-          purpose,
-          timestamp: new Date().toISOString()
-        };
+          const startTs = new Date(start.replace(" ", "T") + ":00").getTime();
+            const endTs = new Date(end.replace(" ", "T") + ":00").getTime();
+            const nowTs = Date.now();
+            
 
-        localStorage.setItem("reservations", JSON.stringify(allReservations));
-
-        window.dispatchEvent(new Event("room-reservations-updated"));
+            setRoomStatus(prev => ({
+              ...prev,
+              [key]: startTs <= nowTs && endTs >= nowTs ? "busy_now" : "busy_future"
+            }));
+          // Refresh reservations
+          const response = await fetch(SERVER_ENDPOINT + '/api/v1/reservations/list');
+          if (response.ok) {
+            const data = await response.json();
+            setReservations(data.reservations || []);
+          }
+        } catch (error) {
+          console.error('Error creating reservation:', error);
+        }
         setModalOpen(false);
       }}
 
-      onDelete={() => {
-        const { key } = roomForReservation;
-
-        setRoomStatus(prev => ({
-          ...prev,
-          [key]: "free",
-        }));
-
-        const reservations = JSON.parse(localStorage.getItem("reservations") || "{}");
-        delete reservations[user.email];
-        localStorage.setItem("reservations", JSON.stringify(reservations));
-
+      onDelete={async () => {
+        const { key, reservation } = roomForReservation;
+        if (reservation?.reservation_id) {
+          try {
+            await fetch(SERVER_ENDPOINT + '/api/v1/reservations/remove', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ reservation_id: reservation.reservation_id })
+            });
+            setRoomStatus(prev => ({
+              ...prev,
+              [key]: "free",
+            }));
+            // Refresh reservations
+            const response = await fetch(SERVER_ENDPOINT + '/api/v1/reservations/list');
+            if (response.ok) {
+              const data = await response.json();
+              setReservations(data.reservations || []);
+            }
+          } catch (error) {
+            console.error('Error deleting reservation:', error);
+          }
+        }
         window.dispatchEvent(new Event("room-reservations-updated"));
         setModalOpen(false);
       }}
@@ -409,28 +652,92 @@ export default function Rooms() {
   </div>
   {/* Bottom action buttons (import/delete) */}
   {isAdmin && (
-  <div className="flex gap-3 mt-4">
+  <div className="flex gap-3 mt-3">
     {svgMarkup && (
       <button
         onClick={handleResetPlan}
-        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm transition"
+        className="cursor-pointer bg-gray-700 text-white px-4 py-2 rounded text-sm hover:bg-gray-800 transition"
       >
         Usuń plan
       </button>
     )}
 
-    <label className="cursor-pointer bg-gray-700 text-white px-4 py-2 rounded text-sm hover:bg-gray-800 transition">
-      Importuj plany pięter
-      <input
-        type="file"
-        accept=".svg"
-        multiple
-        className="hidden"
-        onChange={handleUploadMany}
-      />
-    </label>
+    <div className="flex flex-col gap-2">
+      <label className="cursor-pointer bg-gray-700 text-white px-4 py-2 rounded text-sm hover:bg-gray-800 transition">
+        Importuj plany pięter
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".svg"
+          multiple
+          className="hidden"
+          onChange={handleUploadMany}
+        />
+      </label>
+    </div>
   </div>
 )}
+  {isAdmin && activeFloorId && (
+    <div className="flex gap-3 w-full md:w-auto">
+      <input
+        type="text"
+        placeholder="Opis aktualnego planu"
+        value={currentDescription}
+        onChange={(e) => setCurrentDescription(e.target.value)}
+        className="border rounded px-3 py-2 text-sm flex-1 md:w-67"
+      />
+      <button
+        onClick={handleSaveDescription}
+        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm transition"
+      >
+        Zapisz
+      </button>
+    </div>
+  )}
+
+  {/* Admin section for mobile (appears below buttons) */}
+  {isAdmin && svgMarkup && (
+    <div className="block md:hidden w-full mt-6 p-5 bg-white rounded shadow border text-sm">
+      <h2 className="text-2xl font-bold mb-4 text-gray-900">Sekcja dla administratora</h2>
+      <h3 className="text-lg font-semibold mb-3 text-gray-800">Przydział pomieszczeń</h3>
+
+      {[...svgIds].length > 0 ? (
+        <div className="flex flex-col gap-3">
+          {[...svgIds].sort().map((id, index) => {
+            const key = `${activeFloorId}:${id}`;
+            return (
+              <div
+                key={id}
+                className="p-3 bg-white rounded border flex flex-col gap-1"
+                onMouseEnter={() => setHoveredRoomId(id)}
+                onMouseLeave={() => setHoveredRoomId(null)}
+                onClick={() => {
+                  setEditingRoomId(id);
+                  setEditingName(roomNames[key] || "");
+                }}
+              >
+                <span className="font-medium">
+                  Pomieszczenie {index + 1} — ID:{" "}
+                  <span className="text-blue-600">{id}</span>
+                </span>
+
+                {roomNames[key] && (
+                  <span className="text-sm text-green-700">
+                    Nazwa: <b>{roomNames[key]}</b>
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-gray-500 italic">
+          Nie wykryto żadnych pomieszczeń w tym planie.
+        </p>
+      )}
+    </div>
+  )}
+
   </div>
 );
 
@@ -443,19 +750,24 @@ function FloorList({ setSvgMarkup, setActiveFloorId }) {
 
   const stripExt = (name) => name.replace(/\.svg$/i, "");
 
-  const refreshPlans = () => {
-    const saved = JSON.parse(localStorage.getItem("floor_plans") || "[]");
-    setPlans(saved);
+  const refreshPlans = async () => {
+    try {
+      const response = await fetch(SERVER_ENDPOINT + '/api/v1/svg_files/list');
+      if (response.ok) {
+        const data = await response.json();
+        const fetchedPlans = data.svg_files.map(f => ({ id: f.svg_id.toString(), name: f.filename, svg: f.content }));
+        setPlans(fetchedPlans);
+      }
+    } catch (error) {
+      console.error('Error refreshing plans:', error);
+    }
   };
 
   useEffect(() => {
     refreshPlans();
-
     const handleStorageChange = () => refreshPlans();
     window.addEventListener("storage", handleStorageChange);
-
     window.addEventListener("floorplans-updated", handleStorageChange);
-
     return () => {
       window.removeEventListener("storage", handleStorageChange);
       window.removeEventListener("floorplans-updated", handleStorageChange);
@@ -495,6 +807,7 @@ function FloorList({ setSvgMarkup, setActiveFloorId }) {
   );
 }
 
+
 function ReservationModal({
   isOpen,
   onClose,
@@ -503,27 +816,66 @@ function ReservationModal({
   roomName,
   user,
   isBusy,
-  existingReservation
+  existingReservation,
+   userHasReservation
 }) {
+  const isUserOwnReservation =
+    existingReservation && existingReservation.user_id === user.user_id;
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [purpose, setPurpose] = useState("");
+  const [hasConflict, setHasConflict] = useState(false);
+  
 
   useEffect(() => {
     if (!isOpen || isBusy) return;
 
     const now = new Date();
-    const inOneHour = new Date(now.getTime() + 60 * 60 * 2000); // 2 godziny do przodu
+    const inOneHour = new Date(now.getTime() + 60 * 60 * 1500); // default reservation for 1.5h
 
-    const format = (date) =>
-      date.toISOString().slice(0, 16); // yyyy-MM-ddTHH:mm
+    function formatLocalDateTime(date) {
+      const pad = (n) => String(n).padStart(2, "0");
+
+      return (
+        date.getFullYear() +
+        "-" +
+        pad(date.getMonth() + 1) +
+        "-" +
+        pad(date.getDate()) +
+        "T" +
+        pad(date.getHours()) +
+        ":" +
+        pad(date.getMinutes())
+      );
+    }
+    
+    const format = formatLocalDateTime;
 
     setStart(format(now));
     setEnd(format(inOneHour));
     setPurpose("");
   }, [isOpen, isBusy]);
 
+  useEffect(() => {
+    if (!start || !end || !existingReservation) {
+      setHasConflict(false);
+      return;
+    }
+
+    const startTs = new Date(start).getTime();
+    const endTs   = new Date(end).getTime();
+
+    const rs = new Date(existingReservation.start_at).getTime();
+    const re = new Date(existingReservation.end_at).getTime();
+
+    const overlaps = !(endTs <= rs || startTs >= re);
+
+    setHasConflict(overlaps);
+  }, [start, end, existingReservation]);
+
   if (!isOpen) return null;
+
+  
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -555,6 +907,26 @@ function ReservationModal({
           />
         </div>
 
+        {/* podgląd przyszłej rezerwacji */}
+          {!isBusy && existingReservation && (
+            <div className="mb-3 p-2 border rounded bg-yellow-50">
+              <p className="text-sm text-gray-700 font-medium mb-1">
+                Rezerwacja:
+              </p>
+              <p className="text-sm text-gray-600">
+                Od: <b>{existingReservation.start_at.slice(0, 16)}</b>
+              </p>
+              <p className="text-sm text-gray-600">
+                Do: <b>{existingReservation.end_at.slice(0, 16)}</b>
+              </p>
+              {existingReservation.metadata?.purpose && (
+                <p className="text-sm text-gray-600 mt-1">
+                  Cel: <i>{existingReservation.metadata.purpose}</i>
+                </p>
+              )}
+            </div>
+          )}
+
         {/* widoczne gdy pokój zajęty */}
         {isBusy && existingReservation && (
           <>
@@ -563,7 +935,7 @@ function ReservationModal({
               <input
                 type="text"
                 disabled
-                value={existingReservation.start}
+                value={existingReservation.start_at.slice(0, 16)}
                 className="w-full border rounded px-3 py-2 bg-gray-100"
               />
             </div>
@@ -573,7 +945,7 @@ function ReservationModal({
               <input
                 type="text"
                 disabled
-                value={existingReservation.end}
+                value={existingReservation.end_at.slice(0, 16)}
                 className="w-full border rounded px-3 py-2 bg-gray-100"
               />
             </div>
@@ -583,7 +955,7 @@ function ReservationModal({
               <input
                 type="text"
                 disabled
-                value={existingReservation.purpose}
+                value={existingReservation.metadata?.purpose || ""}
                 className="w-full border rounded px-3 py-2 bg-gray-100"
               />
             </div>
@@ -591,7 +963,7 @@ function ReservationModal({
         )}
 
         {/* widoczne gdy pokój wolny */}
-        {!isBusy && (
+        {!isUserOwnReservation && !isBusy && (
           <>
             <div className="mb-2">
               <label className="text-sm text-gray-600">Data rozpoczęcia</label>
@@ -610,9 +982,19 @@ function ReservationModal({
                 className="w-full border rounded px-3 py-2"
                 value={end}
                 min={start || undefined}
+                max={
+                  !isBusy && existingReservation
+                    ? existingReservation.start_at.slice(0, 16)
+                    : undefined
+                }
                 onChange={(e) => setEnd(e.target.value)}
               />
             </div>
+            {hasConflict && (
+            <p className="text-red-600 text-sm mt-1 mb-2">
+              Wybrany termin nachodzi na istniejącą rezerwację.
+            </p>
+          )}
 
             <div className="mb-4">
               <label className="text-sm text-gray-600">Cel rezerwacji</label>
@@ -629,10 +1011,11 @@ function ReservationModal({
         {/* przyciski */}
         <div className="flex justify-end gap-2 mt-4">
 
-          {isBusy && (
+          {existingReservation?.user_id === user.user_id && (
             <button
               className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
               onClick={onDelete}
+              // >>> BACKEND: TU usuwasz rezerwację (DELETE /api/reservations/{reservation_id}`)
             >
               Usuń rezerwację
             </button>
@@ -645,7 +1028,7 @@ function ReservationModal({
             Zamknij
           </button>
 
-          {!isBusy && (
+          {!isUserOwnReservation && !isBusy && !userHasReservation &&(
             <button
               disabled={!start || !end || end < start}
               className={`px-4 py-2 rounded text-white transition ${

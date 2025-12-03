@@ -367,7 +367,7 @@ export default function Users() {
                 >
                   <td className="p-3">{u.first_name} {u.last_name}</td>
                   <td className="p-3 hidden md:table-cell">{u.email || "Brak"}</td>
-                  <td className="p-3">{u.rfid || "Nie przypisano"}</td>
+                  <td className="p-3">{u.rfid ? "Przypisano" : "Nie przypisano"}</td>
                   <td className="p-3">
                     {u.biometrics ? (
                       <span className="text-green-600 font-semibold">✔️</span>

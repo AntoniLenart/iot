@@ -122,7 +122,7 @@ export default function Logs() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="mb-4 flex justify-center">
+        <div className="mb-4 flex justify-center flex-wrap">
           {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
             <button
               key={page}
