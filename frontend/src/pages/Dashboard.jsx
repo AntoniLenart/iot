@@ -16,10 +16,80 @@ export default function Dashboard() {
   const [activeId, setActiveId] = useState(localStorage.getItem("active_floor_id"));
   
   const [svgIds, setSvgIds] = useState([]);
-  const [hoveredRoomId, setHoveredRoomId] = useState(null);
   const [roomStatus, setRoomStatus] = useState({});
 
-  
+  const [roomNames, setRoomNames] = useState({});
+  const [pathToRoomId, setPathToRoomId] = useState({});
+  const [reservations, setReservations] = useState([]);
+
+  useEffect(() => {
+    if (!activeId) return;
+
+    const fetchRooms = async () => {
+      try {
+        const response = await fetch(SERVER_ENDPOINT + '/api/v1/rooms/list');
+        if (response.ok) {
+          const data = await response.json();
+          const roomsForFloor = data.rooms.filter(r => r.svg_id === activeId);
+
+          const names = {};
+          const pathToId = {};
+
+          roomsForFloor.forEach(r => {
+            if (r.metadata?.path_id) {
+              names[`${activeId}:${r.metadata.path_id}`] = r.name;
+              pathToId[r.metadata.path_id] = r.room_id;
+            }
+          });
+
+          setRoomNames(names);
+          setPathToRoomId(pathToId);
+        }
+      } catch (error) {
+        console.error('Error fetching rooms:', error);
+      }
+    };
+
+    fetchRooms();
+  }, [activeId]);
+
+  useEffect(() => {
+    if (!activeId || Object.keys(pathToRoomId).length === 0) return;
+
+    fetch(SERVER_ENDPOINT + '/api/v1/reservations/list')
+      .then(response => response.json())
+      .then(data => {
+        const allReservations = data.reservations || [];
+        setReservations(allReservations);
+
+        const floorRoomIds = Object.values(pathToRoomId);
+
+        const floorReservations = allReservations.filter(r =>
+          floorRoomIds.includes(r.room_id) && r.status === "confirmed"
+        );
+
+        const status = {};
+
+        Object.keys(pathToRoomId).forEach(pathId => {
+          const key = `${activeId}:${pathId}`;
+          if (roomNames[key]) status[key] = "free";
+        });
+
+        floorReservations.forEach(r => {
+          const pathId = Object.keys(pathToRoomId).find(
+            pid => pathToRoomId[pid] === r.room_id
+          );
+          if (pathId) {
+            const key = `${activeId}:${pathId}`;
+            status[key] = "busy";
+          }
+        });
+
+        setRoomStatus(status);
+      })
+      .catch(error => console.error('Error fetching reservations:', error));
+  }, [activeId, pathToRoomId, roomNames]);
+
   useEffect(() => {
     // Fetch latest logs and users for friendly display
     const fetchLogs = async () => {
@@ -104,26 +174,6 @@ export default function Dashboard() {
     };
   }, []);
 
-  useEffect(() => {
-    const saved = JSON.parse(localStorage.getItem("room_reservations") || "{}");
-    setRoomStatus(saved);
-  }, []);
-
-  useEffect(() => {
-    const update = () => {
-      const saved = JSON.parse(localStorage.getItem("room_reservations") || "{}");
-      setRoomStatus(saved);
-    };
-
-    window.addEventListener("storage", update);
-    window.addEventListener("room-reservations-updated", update);
-
-    return () => {
-      window.removeEventListener("storage", update);
-      window.removeEventListener("room-reservations-updated", update);
-    };
-  }, []);
-
   const handleFloorChange = (id) => {
     setActiveId(id);
     localStorage.setItem("active_floor_id", id);
@@ -175,7 +225,6 @@ export default function Dashboard() {
             <FloorPlan
               svgMarkup={svgMarkup}
               onIdsDetected={setSvgIds}
-              hoveredRoomId={hoveredRoomId}
               roomStatus={roomStatus}
               activeFloorId={activeId}
             />

@@ -101,29 +101,50 @@ export default function Rooms() {
 
   // Fetch reservations and set roomStatus for active floor
   useEffect(() => {
-    if (activeFloorId && Object.keys(pathToRoomId).length > 0) {
-      fetch(SERVER_ENDPOINT + '/api/v1/reservations/list')
-        .then(response => response.json())
-        .then(data => {
-          const allReservations = data.reservations || [];
-          const floorRoomIds = Object.values(pathToRoomId);
-          const floorReservations = allReservations.filter(r => floorRoomIds.includes(r.room_id) && r.status === 'confirmed');
-          setReservations(floorReservations);
-          const status = {};
-          const now = new Date();
-          floorReservations.forEach(r => {
-            if (new Date(r.start_at) <= now && now <= new Date(r.end_at)) {
-              const pathId = Object.keys(pathToRoomId).find(key => pathToRoomId[key] === r.room_id);
-              if (pathId) {
-                status[`${activeFloorId}:${pathId}`] = "busy";
-              }
+  if (activeFloorId && Object.keys(pathToRoomId).length > 0) {
+
+    fetch(SERVER_ENDPOINT + '/api/v1/reservations/list')
+      .then(response => response.json())
+      .then(data => {
+        const allReservations = data.reservations || [];
+        const floorRoomIds = Object.values(pathToRoomId);
+
+        // reservations only for one plan
+        const floorReservations = allReservations.filter(
+          r => floorRoomIds.includes(r.room_id) && r.status === 'confirmed'
+        );
+
+        setReservations(allReservations); 
+
+        const status = {};
+
+        // 1) Default all rooms free
+        Object.entries(pathToRoomId).forEach(([pathId]) => {
+          const key = `${activeFloorId}:${pathId}`;
+          if (roomNames[key]) {
+            status[key] = "free";
+          }
+        });
+        // Mark room busy
+        floorReservations.forEach(r => {
+          const pathId = Object.keys(pathToRoomId).find(
+            pid => pathToRoomId[pid] === r.room_id
+          );
+
+          if (pathId) {
+            const key = `${activeFloorId}:${pathId}`;
+            if (roomNames[key]) {
+              status[key] = "busy";
             }
-          });
-          setRoomStatus(status);
-        })
-        .catch(error => console.error('Error fetching reservations:', error));
-    }
-  }, [activeFloorId, pathToRoomId]);
+          }
+        });
+
+        setRoomStatus(status);
+      })
+      .catch(error => console.error('Error fetching reservations:', error));
+  }
+}, [activeFloorId, pathToRoomId, roomNames]);
+
 
   // Handle uploading multiple SVG floor plans
   const handleUploadMany = async (e) => {
@@ -149,7 +170,7 @@ export default function Rooms() {
           // Parse SVG to extract path IDs
           const parser = new DOMParser();
           const doc = parser.parseFromString(svg, 'image/svg+xml');
-          const paths = doc.querySelectorAll('path[id]');
+          const paths = doc.querySelectorAll('[id]');
           const ids = Array.from(paths).map(p => p.id);
 
           // Create rooms for each detected path ID
@@ -278,7 +299,7 @@ export default function Rooms() {
   };
 
   return (
-  <div className="p-4 flex flex-col gap-6 items-start">
+  <div className="p-4 flex flex-col gap-4 items-start">
     <div className="flex flex-row justify-center gap-6 items-start w-full">
     {/* Left side — floor plan preview */}
 <div
@@ -311,44 +332,63 @@ export default function Rooms() {
 
       <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-2">
       {user && svgIds.map(id => {
-        const key = `${activeFloorId}:${id}`;
-        const roomReservation = reservations.find(r => r.room_id === pathToRoomId[id] && r.status === 'confirmed' && new Date(r.start_at) <= new Date() && new Date() <= new Date(r.end_at));
-        const isOccupied = roomReservation !== undefined;
-        const isUserReservation = roomReservation && roomReservation.user_id === user.user_id;
-        const userHasReservation = reservations.some(r => r.user_id === user.user_id && r.status === 'confirmed' && new Date(r.start_at) <= new Date() && new Date() <= new Date(r.end_at));
+  const key = `${activeFloorId}:${id}`;
+  const status = roomStatus[key];
+  const isOccupied = status === "busy";
 
-        return roomNames[key] && (
-          <button
-            key={id}
-            disabled={
-              (userHasReservation && !isUserReservation) || 
-              (isOccupied && !isUserReservation)
-            }
-            onClick={() => {
-              const key = `${activeFloorId}:${id}`;
-              const roomName = roomNames[key];
+  // znajdź rezerwację tego pokoju, NIE tylko trwającą teraz
+  const roomReservation = reservations.find(
+    r =>
+      r.room_id === pathToRoomId[id] &&
+      r.status === 'confirmed'
+  );
 
-              setRoomForReservation({ id, key, roomName, reservation: roomReservation });
-              setModalOpen(true);
-            }}
-            className={`px-3 py-2 text-sm rounded font-medium transition
-              ${!isOccupied
-                ? "bg-green-600 hover:bg-green-700 text-white"
-                : "bg-red-600 hover:bg-red-700 text-white"
-              }
-              ${userHasReservation && !isUserReservation ? "opacity-50 cursor-not-allowed" : ""}
-            `}
-          >
-            {!isOccupied ? (
-              `Zarezerwuj ${roomNames[key]}`
-            ) : isUserReservation ? (
-              `Usuń rezerwację ${roomNames[key]}`
-            ) : (
-              `Pokój zajęty`
-            )}
-          </button>
-        );
-      })}
+  // czy ten użytkownik jest właścicielem rezerwacji tego pokoju
+  const isUserReservation = roomReservation?.user_id === user.user_id;
+
+  // czy ten użytkownik ma jakąkolwiek rezerwację
+  const userHasReservation = reservations.some(r =>
+    r.user_id === user.user_id &&
+    r.status === 'confirmed'
+  );
+
+  return roomNames[key] && (
+    <button
+      key={id}
+      disabled={
+        (userHasReservation && !isUserReservation) ||
+        (isOccupied && !isUserReservation)
+      }
+      onClick={() => {
+        setRoomForReservation({
+          id,
+          key,
+          roomName: roomNames[key],
+          reservation: roomReservation
+        });
+        setModalOpen(true);
+      }}
+      className={`px-3 py-2 text-sm rounded font-medium transition
+        ${!isOccupied
+          ? "bg-green-600 hover:bg-green-700 text-white"
+          : "bg-red-600 hover:bg-red-700 text-white"
+        }
+        ${userHasReservation && !isUserReservation
+          ? "opacity-50 cursor-not-allowed"
+          : ""
+        }
+      `}
+    >
+      {!isOccupied ? (
+        `Zarezerwuj ${roomNames[key]}`
+      ) : isUserReservation ? (
+        `Usuń rezerwację ${roomNames[key]}`
+      ) : (
+        `Pokój zajęty`
+      )}
+    </button>
+  );
+})}
     </div>
 
     <div className="pt-3">
@@ -496,10 +536,13 @@ export default function Rooms() {
               metadata: { purpose }
             })
           });
+          
+
+
           setRoomStatus(prev => ({
-            ...prev,
-            [key]: "busy",
-          }));
+              ...prev,
+              [key]: "busy"
+            }));
           // Refresh reservations
           const response = await fetch(SERVER_ENDPOINT + '/api/v1/reservations/list');
           if (response.ok) {
@@ -509,7 +552,6 @@ export default function Rooms() {
         } catch (error) {
           console.error('Error creating reservation:', error);
         }
-        window.dispatchEvent(new Event("room-reservations-updated"));
         setModalOpen(false);
       }}
 
@@ -544,11 +586,11 @@ export default function Rooms() {
   </div>
   {/* Bottom action buttons (import/delete) */}
   {isAdmin && (
-  <div className="flex gap-3 mt-4">
+  <div className="flex gap-3 mt-3">
     {svgMarkup && (
       <button
         onClick={handleResetPlan}
-        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm transition"
+        className="cursor-pointer bg-gray-700 text-white px-4 py-2 rounded text-sm hover:bg-gray-800 transition"
       >
         Usuń plan
       </button>
@@ -567,25 +609,69 @@ export default function Rooms() {
         />
       </label>
     </div>
-
-    {activeFloorId && (
-      <div className="flex flex-col gap-2">
-        <textarea
-          placeholder="Opis aktualnego planu"
-          value={currentDescription}
-          onChange={(e) => setCurrentDescription(e.target.value)}
-          className="border rounded px-3 py-2 text-sm w-64 h-20 resize-none"
-        />
-        <button
-          onClick={handleSaveDescription}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm transition"
-        >
-          Zapisz opis
-        </button>
-      </div>
-    )}
   </div>
 )}
+  {isAdmin && activeFloorId && (
+    <div className="flex gap-3 w-full md:w-auto">
+      <input
+        type="text"
+        placeholder="Opis aktualnego planu"
+        value={currentDescription}
+        onChange={(e) => setCurrentDescription(e.target.value)}
+        className="border rounded px-3 py-2 text-sm flex-1 md:w-67"
+      />
+      <button
+        onClick={handleSaveDescription}
+        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm transition"
+      >
+        Zapisz
+      </button>
+    </div>
+  )}
+
+  {/* Admin section for mobile (appears below buttons) */}
+  {isAdmin && svgMarkup && (
+    <div className="block md:hidden w-full mt-6 p-5 bg-white rounded shadow border text-sm">
+      <h2 className="text-2xl font-bold mb-4 text-gray-900">Sekcja dla administratora</h2>
+      <h3 className="text-lg font-semibold mb-3 text-gray-800">Przydział pomieszczeń</h3>
+
+      {[...svgIds].length > 0 ? (
+        <div className="flex flex-col gap-3">
+          {[...svgIds].sort().map((id, index) => {
+            const key = `${activeFloorId}:${id}`;
+            return (
+              <div
+                key={id}
+                className="p-3 bg-white rounded border flex flex-col gap-1"
+                onMouseEnter={() => setHoveredRoomId(id)}
+                onMouseLeave={() => setHoveredRoomId(null)}
+                onClick={() => {
+                  setEditingRoomId(id);
+                  setEditingName(roomNames[key] || "");
+                }}
+              >
+                <span className="font-medium">
+                  Pomieszczenie {index + 1} — ID:{" "}
+                  <span className="text-blue-600">{id}</span>
+                </span>
+
+                {roomNames[key] && (
+                  <span className="text-sm text-green-700">
+                    Nazwa: <b>{roomNames[key]}</b>
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-gray-500 italic">
+          Nie wykryto żadnych pomieszczeń w tym planie.
+        </p>
+      )}
+    </div>
+  )}
+
   </div>
 );
 
@@ -655,6 +741,7 @@ function FloorList({ setSvgMarkup, setActiveFloorId }) {
   );
 }
 
+
 function ReservationModal({
   isOpen,
   onClose,
@@ -672,7 +759,7 @@ function ReservationModal({
   useEffect(() => {
     if (!isOpen || isBusy) return;
 
-    const now = new Date("2025-08-10T22:30:00");
+    const now = new Date();
     const inOneHour = new Date(now.getTime() + 60 * 60 * 1500); // default reservation for 1.5h
 
     function formatLocalDateTime(date) {
