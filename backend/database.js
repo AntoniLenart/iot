@@ -480,12 +480,12 @@ router.get('/reservations/list', async (req, res) => {
 });
 
 router.post('/reservations/create', ensureJson, async (req, res) => {
-    const { desk_id, user_id, start_at, end_at, created_by, status, metadata } = req.body;
-    if (!desk_id || !start_at || !end_at) return res.status(400).json({ error: 'desk_id, start_at and end_at are required' });
+    const { room_id, user_id, start_at, end_at, created_by, status, metadata } = req.body;
+    if (!room_id || !start_at || !end_at) return res.status(400).json({ error: 'room_id, start_at and end_at are required' });
     try {
-        const insert = `INSERT INTO access_mgmt.reservations (desk_id, user_id, start_at, end_at, created_at, created_by, status, metadata)
+        const insert = `INSERT INTO access_mgmt.reservations (room_id, user_id, start_at, end_at, created_at, created_by, status, metadata)
                         VALUES ($1,$2,$3,$4,now(),$5,$6,$7) RETURNING *`;
-        const values = [desk_id, user_id || null, start_at, end_at, created_by || null, status || 'confirmed', metadata || {}];
+        const values = [room_id, user_id || null, start_at, end_at, created_by || null, status || 'confirmed', metadata || {}];
         const result = await pool.query(insert, values);
         res.status(201).json({ reservation: result.rows[0] });
     } catch (err) {
@@ -510,7 +510,7 @@ router.post('/reservations/remove', ensureJson, async (req, res) => {
 router.patch('/reservations/update', ensureJson, async (req, res) => {
     const { reservation_id, ...fields } = req.body;
     if (!reservation_id) return res.status(400).json({ error: 'reservation_id is required' });
-    const allowed = ['desk_id','user_id','start_at','end_at','created_by','status','metadata'];
+    const allowed = ['room_id','user_id','start_at','end_at','created_by','status','metadata'];
     const sets = []; const values = []; let idx = 1;
     for (const key of Object.keys(fields)) {
         if (!allowed.includes(key)) continue;
@@ -568,11 +568,21 @@ router.get('/rooms/get', async (req, res) => {
 });
 
 router.post('/rooms/create', ensureJson, async (req, res) => {
-    const { name, floor, capacity, description, metadata } = req.body;
-    if (!name) return res.status(400).json({ error: 'name is required' });
+    const { name, floor, svg_id, capacity, description, metadata } = req.body;
+    const pathId = metadata?.path_id;
+    const roomName = name;
+
+    // Check if room already exists for this svg_id and path_id
+    if (pathId && svg_id) {
+        const existing = await pool.query('SELECT room_id FROM access_mgmt.rooms WHERE svg_id = $1 AND metadata->>\'path_id\' = $2', [svg_id, pathId]);
+        if (existing.rowCount > 0) {
+            return res.status(200).json({ room: { room_id: existing.rows[0].room_id, message: 'Room already exists' } });
+        }
+    }
+
     try {
-        const insert = `INSERT INTO access_mgmt.rooms (name, floor, capacity, description, metadata) VALUES ($1,$2,$3,$4,$5) RETURNING *`;
-        const values = [name, floor || null, capacity || null, description || null, metadata || {}];
+        const insert = `INSERT INTO access_mgmt.rooms (name, floor, svg_id, capacity, description, metadata) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`;
+        const values = [roomName, floor || null, svg_id || null, capacity || null, description || null, metadata || {}];
         const result = await pool.query(insert, values);
         res.status(201).json({ room: result.rows[0] });
     } catch (err) {
@@ -597,7 +607,7 @@ router.post('/rooms/remove', ensureJson, async (req, res) => {
 router.patch('/rooms/update', ensureJson, async (req, res) => {
     const { room_id, ...fields } = req.body;
     if (!room_id) return res.status(400).json({ error: 'room_id is required' });
-    const allowed = ['name','floor','capacity','description','metadata'];
+    const allowed = ['name','floor','svg_id','capacity','description','metadata'];
     const sets = []; const values = []; let idx = 1;
     for (const key of Object.keys(fields)) {
         if (!allowed.includes(key)) continue;
@@ -1569,11 +1579,11 @@ router.get('/svg_files/list', async (req, res) => {
 });
 
 router.post('/svg_files/create', ensureJson, async (req, res) => {
-    const { filename, description, content, added_by, metadata } = req.body;
+    const { filename, description, content, added_by } = req.body;
     if (!filename || !content) return res.status(400).json({ error: 'filename and content are required' });
     try {
-        const insert = `INSERT INTO access_mgmt.svg_files (filename, description, content, added_by, metadata) VALUES ($1,$2,$3,$4,$5) RETURNING *`;
-        const values = [filename, description || null, content, added_by || null, metadata || {}];
+        const insert = `INSERT INTO access_mgmt.svg_files (filename, description, content, added_by) VALUES ($1,$2,$3,$4) RETURNING *`;
+        const values = [filename, description || null, content, added_by || null];
         const result = await pool.query(insert, values);
         res.status(201).json({ svg_file: result.rows[0] });
     } catch (err) {
@@ -1598,7 +1608,7 @@ router.post('/svg_files/remove', ensureJson, async (req, res) => {
 router.patch('/svg_files/update', ensureJson, async (req, res) => {
     const { svg_id, ...fields } = req.body;
     if (!svg_id) return res.status(400).json({ error: 'svg_id is required' });
-    const allowed = ['filename','description','content','added_by','is_active','metadata'];
+    const allowed = ['filename','description','content','added_by'];
     const sets = []; const values = []; let idx = 1;
     for (const key of Object.keys(fields)) {
         if (!allowed.includes(key)) continue;

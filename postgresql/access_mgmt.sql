@@ -74,9 +74,10 @@ CREATE INDEX IF NOT EXISTS ix_devices_metadata_gin ON devices USING gin (metadat
 -- TABLE: rooms (pokoje)
 CREATE TABLE IF NOT EXISTS rooms (
   room_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name text NOT NULL,
+  name text,
   description text,
   floor text,
+  svg_id uuid REFERENCES svg_files(svg_id) ON DELETE CASCADE,
   capacity int,
   metadata jsonb DEFAULT '{}'
 );
@@ -252,7 +253,7 @@ EXECUTE FUNCTION set_credential_inactive_on_qr_invalid();
 -- TABLE: reservations (rezerwacja stanowisk/biurek)
 CREATE TABLE IF NOT EXISTS reservations (
   reservation_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  desk_id uuid REFERENCES desks(desk_id) ON DELETE CASCADE,
+  room_id uuid REFERENCES rooms(room_id) ON DELETE CASCADE,
   user_id uuid REFERENCES users(user_id) ON DELETE SET NULL,
   start_at timestamptz NOT NULL,
   end_at timestamptz NOT NULL,
@@ -263,7 +264,7 @@ CREATE TABLE IF NOT EXISTS reservations (
   metadata jsonb DEFAULT '{}' 
 );
 
-CREATE INDEX IF NOT EXISTS ix_reservations_desk_time ON reservations (desk_id, start_at, end_at);
+CREATE INDEX IF NOT EXISTS ix_reservations_room_time ON reservations (room_id, start_at, end_at);
 
 -- TABLE: access_logs (logi przejść przez drzwi)
 CREATE TABLE IF NOT EXISTS access_logs (

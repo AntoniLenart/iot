@@ -16,10 +16,80 @@ export default function Dashboard() {
   const [activeId, setActiveId] = useState(localStorage.getItem("active_floor_id"));
   
   const [svgIds, setSvgIds] = useState([]);
-  const [hoveredRoomId, setHoveredRoomId] = useState(null);
   const [roomStatus, setRoomStatus] = useState({});
 
-  
+  const [roomNames, setRoomNames] = useState({});
+  const [pathToRoomId, setPathToRoomId] = useState({});
+  const [reservations, setReservations] = useState([]);
+
+  useEffect(() => {
+    if (!activeId) return;
+
+    const fetchRooms = async () => {
+      try {
+        const response = await fetch(SERVER_ENDPOINT + '/api/v1/rooms/list');
+        if (response.ok) {
+          const data = await response.json();
+          const roomsForFloor = data.rooms.filter(r => r.svg_id === activeId);
+
+          const names = {};
+          const pathToId = {};
+
+          roomsForFloor.forEach(r => {
+            if (r.metadata?.path_id) {
+              names[`${activeId}:${r.metadata.path_id}`] = r.name;
+              pathToId[r.metadata.path_id] = r.room_id;
+            }
+          });
+
+          setRoomNames(names);
+          setPathToRoomId(pathToId);
+        }
+      } catch (error) {
+        console.error('Error fetching rooms:', error);
+      }
+    };
+
+    fetchRooms();
+  }, [activeId]);
+
+  useEffect(() => {
+    if (!activeId || Object.keys(pathToRoomId).length === 0) return;
+
+    fetch(SERVER_ENDPOINT + '/api/v1/reservations/list')
+      .then(response => response.json())
+      .then(data => {
+        const allReservations = data.reservations || [];
+        setReservations(allReservations);
+
+        const floorRoomIds = Object.values(pathToRoomId);
+
+        const floorReservations = allReservations.filter(r =>
+          floorRoomIds.includes(r.room_id) && r.status === "confirmed"
+        );
+
+        const status = {};
+
+        Object.keys(pathToRoomId).forEach(pathId => {
+          const key = `${activeId}:${pathId}`;
+          if (roomNames[key]) status[key] = "free";
+        });
+
+        floorReservations.forEach(r => {
+          const pathId = Object.keys(pathToRoomId).find(
+            pid => pathToRoomId[pid] === r.room_id
+          );
+          if (pathId) {
+            const key = `${activeId}:${pathId}`;
+            status[key] = "busy";
+          }
+        });
+
+        setRoomStatus(status);
+      })
+      .catch(error => console.error('Error fetching reservations:', error));
+  }, [activeId, pathToRoomId, roomNames]);
+
   useEffect(() => {
     // Fetch latest logs and users for friendly display
     const fetchLogs = async () => {
@@ -72,27 +142,29 @@ export default function Dashboard() {
   };
 
    useEffect(() => {
-    const savedPlans = JSON.parse(localStorage.getItem("floor_plans") || "[]");
-
-    const savedActive = localStorage.getItem("active_floor_id");
-    const fallback = savedPlans[0]?.id || null;
-    const idToUse = savedActive || fallback;
-
-    setPlans(savedPlans);
-    setActiveId(idToUse);
-    setSvgMarkup(savedPlans.find(p => p.id === idToUse)?.svg || null);
-
-    const handleStorageChange = () => {
-      const updatedPlans = JSON.parse(localStorage.getItem("floor_plans") || "[]");
-      setPlans(updatedPlans);
-
-      const updatedActive = localStorage.getItem("active_floor_id");
-      const plan = updatedPlans.find((p) => p.id === updatedActive);
-      setActiveId(updatedActive);
-      if (plan) setSvgMarkup(plan.svg);
-
+    const fetchPlans = async () => {
+      try {
+        const response = await fetch(SERVER_ENDPOINT + '/api/v1/svg_files/list');
+        if (response.ok) {
+          const data = await response.json();
+          const fetchedPlans = data.svg_files.map(f => ({ id: f.svg_id.toString(), name: f.filename, svg: f.content }));
+          setPlans(fetchedPlans);
+          const savedActive = localStorage.getItem("active_floor_id");
+          const fallback = fetchedPlans[0]?.id || null;
+          const idToUse = savedActive || fallback;
+          setActiveId(idToUse);
+          setSvgMarkup(fetchedPlans.find(p => p.id === idToUse)?.svg || null);
+        }
+      } catch (error) {
+        console.error('Error fetching plans:', error);
+      }
     };
 
+    const handleStorageChange = () => {
+      fetchPlans();
+    };
+
+    fetchPlans();
     window.addEventListener("storage", handleStorageChange);
     window.addEventListener("floorplans-updated", handleStorageChange);
 
@@ -100,11 +172,6 @@ export default function Dashboard() {
       window.removeEventListener("storage", handleStorageChange);
       window.removeEventListener("floorplans-updated", handleStorageChange);
     };
-  }, []);
-
-  useEffect(() => {
-    const saved = JSON.parse(localStorage.getItem("room_reservations") || "{}");
-    setRoomStatus(saved);
   }, []);
 
   const handleFloorChange = (id) => {
@@ -130,7 +197,7 @@ export default function Dashboard() {
             >
               {plans.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name}
+                  {p.name.replace(/\.svg$/i, "")}
                 </option>
               ))}
             </select>
@@ -149,18 +216,19 @@ export default function Dashboard() {
           minHeight: "350px",
         }}
       >
-        {/*Early render lock */}
-        {!plans.length || !activeId ? (
+        {plans.length === 0 ? (
+          <p className="text-gray-500">Brak map, dodaj mapę w widoku rezerwacji.</p>
+        ) : !activeId || !svgMarkup ? (
           <p className="text-gray-500">Ładowanie mapy...</p>
-        ) : svgMarkup ? (
-          <div className="w-full h-full flex justify-center items-center svg-wrapper">
-          <FloorPlan svgMarkup={svgMarkup} 
-          onIdsDetected={setSvgIds}
-          hoveredRoomId={hoveredRoomId}
-          roomStatus={roomStatus} />
-          </div>
         ) : (
-          <p className="text-gray-500">Brak wczytanego planu piętra</p>
+          <div className="w-full h-full flex justify-center items-center svg-wrapper">
+            <FloorPlan
+              svgMarkup={svgMarkup}
+              onIdsDetected={setSvgIds}
+              roomStatus={roomStatus}
+              activeFloorId={activeId}
+            />
+          </div>
         )}
       </div>
 
@@ -168,9 +236,10 @@ export default function Dashboard() {
       {isAdmin && (
         <div className="bg-white p-2 rounded-lg shadow">
           <h3 className="text-xl font-semibold mb-2">Ostatnie logi</h3>
+
           <ul className="list-disc list-inside space-y-2">
             {logs.length > 0 ? (
-              logs.map(log => (
+              logs.slice(0, 4).map(log => (
                 <li key={log.audit_id}>{getFriendlyLog(log)}</li>
               ))
             ) : (
