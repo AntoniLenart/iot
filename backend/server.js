@@ -136,7 +136,7 @@ const toUTCISOString = (dateString) => {
   return isNaN(d.getTime()) ? null : d.toISOString(); // always UTC
 };
 
-app.post('/qrcode_generation', async (req, res) => {
+app.post('/qrcode_generation', apiLimiter, async (req, res) => {
   try {
      // Validate required fields
     if (!req.body.valid_until) {
