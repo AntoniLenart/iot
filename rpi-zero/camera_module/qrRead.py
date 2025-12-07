@@ -16,7 +16,6 @@ import threading
 
 class CameraModule:
     def __init__(self, picam):
-        """Initialize camera."""
         self.picam = picam
         self.is_started = True
         self.qr_result = None
@@ -26,14 +25,12 @@ class CameraModule:
         print("Camera ready for scanning.")
 
     def qr_to_json(self, qr_text: str) -> dict:
-        """Convert raw QR data bytes into a JSON-serializable dict."""
         return {
             "type": "qr",
             "data": qr_text,
         }
 
     def cleanup(self):
-        """Gracefully stop and release camera."""
         print("Cleaning up camera...")
         if self.picam:
             if self.is_started:
@@ -44,18 +41,6 @@ class CameraModule:
         print("Camera shutdown complete.")
 
     def live_scan(self, save_dir: str = None, timeout: int = 0):
-        """
-        Perform live QR scanning.
-        - Detects the first QR code in the live video stream.
-        - Saves cropped QR image as .jpg and its data as .json if save_dir is given.
-
-        Args:
-            save_dir (str, optional): Directory to save results (default: None)
-            timeout (int): Stop scanning after N seconds (0 = unlimited)
-
-        Returns:
-            dict | None: JSON dict of the first detected QR, or None if none detected
-        """
         if not self.is_started:
             raise RuntimeError("Camera not started")
 
@@ -109,7 +94,6 @@ class CameraModule:
             print("QR scanning thread exiting.")
 
     def start_background_scan(self, **kwargs):
-        """Start QR scanning in a background thread."""
         if self._thread and self._thread.is_alive():
             print("Scan already running.")
             return
@@ -119,7 +103,6 @@ class CameraModule:
         self._thread.start()
 
     def stop_scan(self):
-        """Stop scanning thread gracefully."""
         self._stop_event.set()
         if self._thread:
             self._thread.join()

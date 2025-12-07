@@ -3,4 +3,5 @@ pillow==11.1.0
 pn532pi==1.7
 pyserial==3.5
 python-dotenv==1.0.1
+pyzbar==0.1.9
 

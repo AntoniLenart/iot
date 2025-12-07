@@ -1,6 +1,6 @@
 # Moduł kamery Raspberry Pi V2 – odczyt kodów QR
 
-Prosty sterownik CLI w Pythonie do automatycznego wykrywania i analizy kodów QR za pomocą modułu kamery Raspberry Pi (v1/v2/v3).
+Prosty sterownik w Pythonie do automatycznego wykrywania i analizy kodów QR za pomocą modułu kamery Raspberry Pi (v1/v2/v3).
 Zaprojektowany do pracy na Raspberry Pi Zero, 3, 4 lub 5.
 
 ## 1. Wymagania sprzętowe
@@ -18,7 +18,6 @@ Kamera V2 korzysta z mniejszego złącza CSI na Raspberry Pi Zero. Dlatego potrz
 ## 3. Sprawdź interfejs kamery
 Po zamontowaniu kamery i uruchomieniu sprawdź, czy kamera jest wykrywana:
 ```bash
-sudo apt install libcamera-apps
 rpicam-hello --list-cameras
 ```
 Powinniśmy zobaczyć komunikat:
@@ -38,13 +37,13 @@ Available cameras
 ```
 
 ## 4. Instalacja oprogramowania
-
-Zainstaluj zależności wymagane do obsługi kamery i analizy kodów QR:
+Zainstaluj Python 3 i zależności:
 ```bash
 sudo apt update
-sudo apt install python3-pip python3-opencv python3-pyzbar python3-libcamera libzbar0 python3-picamera2 python3-numpy -y
+sudo apt install python3-pip python3-opencv python3-libcamera python3-picamera2 python3-numpy
+pip3 install pyserial
 ```
-Następnie skopiuj lub sklonuj repozytorium z plikiem `camera_module.py` na swój Raspberry Pi.
+Sklonuj lub skopiuj to repozytorium na swój Pi.
 
 ## 5. Użycie
 

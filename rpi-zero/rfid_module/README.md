@@ -4,7 +4,7 @@ Sterownik modułu RFID opartego na układzie pn532 z którym komunikacja odbywa 
 
 ## 1. Wymagania sprzętowe
 - Raspberry Pi Zero / 3 / 4 / 5 (z pinami GPIO I2C)
-- Czujnik odcisków palców UART
+- Czujnik RFID
 - przewody
 
 ## 2. Schemat połączeń elektrycznych

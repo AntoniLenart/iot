@@ -1,8 +1,8 @@
 # Moduł odcisków palców UART na Raspberry Pi
 
-Prosty sterownik CLI dla modułu napisany w Pythonie; przewodnik konfiguracji 
+Prosty sterownik CLI dla modułu fingerprint napisany w Pythonie
 
-To repozytorium zawiera podstawowa implementację w języku Python oraz narzędzie wiersza poleceń do sterowania czujnikiem odcisków palców UART  z komputera Raspberry Pi Zero, 3, 4 lub 5 za pomocą interfejsu szeregowego (UART).
+To repozytorium zawiera podstawowa implementację w języku Python do sterowania czujnikiem odcisków palców UART  z komputera Raspberry Pi Zero, 3, 4 lub 5 za pomocą interfejsu szeregowego (UART).
 
 ## 1. Wymagania sprzętowe
 - Raspberry Pi Zero / 3 / 4 / 5 (z pinami GPIO UART)
@@ -59,33 +59,40 @@ import time
 
 fp = FingerprintModule(port=DEFAULT_PORT, baud=DEFAULT_BAUD, timeout=0)
 
-print("Get eigenvalues of your fingerprint")
-print("Capturing eigenvalues...")
+logger.info("Get eigenvalues of your fingerprint")
+logger.info("Capturing eigenvalues...")
+
 fp.new_scan()
-while True:
-    data = fp.get_eigenvalues()
-    if data is not None:
-        print(f"Eigenvalues length: {len(data)} bytes")
-        print(data)
-        print(f"JSON: \n {fp.eigen_to_json(data)}")
-        break
-    else:
-        print("Waiting for data from scanner...")
-        time.sleep(1)
+logging.info("Started new scan")
+try:
+    while True:
+        data = fp.get_eigenvalues(wait=0.1)
+        if data is not None:
+            logger.debug(f"Eigenvalues length: {len(data)} bytes")
+            logger.debug(data)
+            logger.info(f"JSON: \n {fp.eigen_to_json(data)}")
+            break
+        else:
+            logger.info("Waiting for data from scanner...")
+            time.sleep(1)     
+    except KeyboardInterrupt:
+        fp.stop_scan()
 ```
 
 Output:
 ```bash
-Get eigenvalues of your fingerprint
-Capturing eigenvalues...
-Waiting for data from scanner...
-Waiting for data from scanner...
-Waiting for data from scanner...
-Waiting for data from scanner...
-Waiting for data from scanner...
-Waiting for data from scanner...
-Eigenvalues length: 196 bytes
-b'\x00\x00\x00\x1a ... x00\x00\x00'
-JSON: 
- {'format': 'fingerprint', 'data': 'AAAAGhyrR ... AAAAAAA=='}
+INFO:__main__:Get eigenvalues of your fingerprint
+INFO:__main__:Capturing eigenvalues...
+DEBUG:__main__:Fingerprint module reset (woken from sleep).
+INFO:root:Started new scan
+INFO:__main__:Waiting for data from scanner...
+INFO:__main__:Waiting for data from scanner...
+INFO:__main__:Waiting for data from scanner...
+INFO:__main__:Waiting for data from scanner...
+INFO:__main__:Waiting for data from scanner...
+DEBUG:__main__:Eigenvalues length: 196 bytes
+DEBUG:__main__:b'\x00\x00\x00%\x10\ ... xc1|x00\x00\x00\x00'
+INFO:__main__:JSON: 
+ {'type': 'fingerprint', 'data': 'AAAAJRAQyiEgBgzhIgQJISQ ... AAAAAAAAAAAAAAAA=='}
+
 ```

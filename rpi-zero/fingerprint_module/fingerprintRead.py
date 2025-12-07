@@ -33,7 +33,7 @@ ACK_TIMEOUT = 0x08
 ACK_USER_EXIST = 0x06
 
 # GPIO
-RST_PIN = 18
+RST_PIN = 24
 
 # Logging
 logger = logging.getLogger(__name__)
@@ -44,7 +44,6 @@ class FingerprintError(Exception):
 
 
 class FingerprintModule:
-    """Low-level driver for the UART fingerprint module."""
 
     def __init__(self, port: str = DEFAULT_PORT, baud: int = DEFAULT_BAUD, timeout: float = DEFAULT_TIMEOUT):
         self.port = port
@@ -64,12 +63,6 @@ class FingerprintModule:
     # ------------------------
     @staticmethod
     def _checksum(bytes_seq: bytes) -> int:
-        """
-        Checksum defined in manual: XOR of bytes 2..6 (1-indexed) for 8-byte command
-        or more generally XOR of bytes from second byte up to the 6th byte of header
-        For data-header: manual states CHK = XOR of 2nd to 6th byte of header.
-        For data packet: CHK = XOR of second byte to Len+1 byte.
-        """
         # Generic XOR over given bytes
         chk = 0x00
         for b in bytes_seq:
@@ -84,11 +77,6 @@ class FingerprintModule:
         return packet
 
     def _build_data_command(self, cmd: int, data: bytes) -> bytes:
-        """
-        Build a data command with header + data packet:
-        Header: 0xF5 CMD Hi(Len) Low(Len) 0 0 CHK 0xF5
-        Then immediately send Data packet: 0xF5 <data bytes> CHK 0xF5
-        """
         length = len(data)
         hi = (length >> 8) & 0xFF
         lo = length & 0xFF
@@ -104,7 +92,6 @@ class FingerprintModule:
         return header_packet + data_packet
 
     def _read_exact(self, n: int) -> bytes:
-        """Read exactly n bytes (or raise)"""
         buf = b""
         start = time.time()
         while len(buf) < n:
@@ -121,22 +108,10 @@ class FingerprintModule:
     # Low-level send / receive
     # ------------------------
     def _send(self, packet: bytes):
-        """Write the packet to serial and flush."""
         self.ser.write(packet)
         self.ser.flush()
 
     def _receive_response(self, expect_data: bool = False) -> Tuple[int, List[int], Optional[bytes]]:
-        """
-        Read response header (8 bytes). Return (cmd, params_list, data_bytes or None)
-
-        Header format (response):
-         0xF5 CMD Hi(Len) Low(Len) Q3 0 CHK 0xF5   (8 bytes)
-        If Hi(Len)|Low(Len) > 0 -> there will be a data packet after header: 0xF5 <data> CHK 0xF5
-        Data packet length = Len + 3 (prefix 0xF5, data len bytes, CHK, 0xF5) but we'll parse as:
-          read 1 byte (should be 0xF5), then read Len bytes of data, then read CHK and trailing 0xF5
-        Returns:
-          cmd (int), [Q1,Q2,Q3?] list (length variable), data (bytes) or None
-        """
         if self.ser.in_waiting < 198:
             return None, None, None
 
@@ -183,7 +158,6 @@ class FingerprintModule:
         self._send(packet)
     
     def stop_scan(self):
-        """Force module to exit scanning by entering sleep mode."""
         packet = self._build_simple_command(0x2C)
         self._send(packet)
         logger.debug("Stop (sleep) command sent.")
@@ -199,11 +173,6 @@ class FingerprintModule:
         logger.debug("Fingerprint module reset (woken from sleep).")
 
     def get_eigenvalues(self, wait=0) -> bytes:
-        """
-        CMD 0x23 Upload acquired images and extracted eigenvalue.
-        Manual: eigenvalues data length Len-3 is fixed 193 bytes.
-        We'll return raw eigenvalue payload (193 bytes expected).
-        """
         time.sleep(wait)
         cmd, params, data = self._receive_response(expect_data=True)
         if data is None:
@@ -215,16 +184,6 @@ class FingerprintModule:
     # ------------------------
 
     def eigen_to_json(self, eigen_bytes: bytes, filename: str = None) -> dict:
-        """
-        Convert raw eigenvalue bytes (193 bytes) into a JSON-serializable dict.
-
-        Args:
-            eigen_bytes (bytes): Raw eigenvalue data read from module (.bin format)
-            filename (str, optional): If provided, save JSON to this file name
-
-        Returns:
-            dict: JSON-ready dictionary representation of the eigenvalue
-        """
         data = {
             "type": "fingerprint",
             "data": base64.b64encode(eigen_bytes).decode("ascii"),
@@ -238,16 +197,6 @@ class FingerprintModule:
         return data
     
     def eigen_from_json(self, json_data, bin_filename: str = None) -> bytes:
-        """
-        Convert a JSON representation of an eigenvalue back into raw bytes.
-
-        Args:
-            json_data (str | dict): JSON string or loaded dict containing eigenvalue
-            bin_filename (str, optional): If provided, save bytes to .bin file
-
-        Returns:
-            bytes: Raw eigenvalue bytes suitable for upload to module
-        """
         # Load JSON string if needed
         if isinstance(json_data, str):
             if Path(json_data).is_file():
