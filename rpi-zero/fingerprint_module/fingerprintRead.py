@@ -207,8 +207,8 @@ class FingerprintModule:
         else:
             obj = json_data
 
-        if obj.get("format") != "fingerprint":
-            raise ValueError("Invalid or missing format tag in JSON data")
+        if obj.get("type") != "fingerprint":
+            raise ValueError("Invalid or missing type tag in JSON data")
 
         eigen_bytes = base64.b64decode(obj["data"])
 
