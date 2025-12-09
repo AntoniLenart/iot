@@ -75,8 +75,8 @@ try:
         else:
             logger.info("Waiting for data from scanner...")
             time.sleep(1)     
-    except KeyboardInterrupt:
-        fp.stop_scan()
+except KeyboardInterrupt:
+    fp.stop_scan()
 ```
 
 Output:
