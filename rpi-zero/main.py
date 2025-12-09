@@ -32,6 +32,10 @@ def createJSONRequest(type, data):
     if type == "fingerprint":
         data = base64.b64encode(data).decode("ascii")
 
+    if type == "qr_code":
+        tmpdata = json.loads(data)
+        data = tmpdata["token"]
+
     request = {"type" : type,
                "data" : data}
     
@@ -134,7 +138,7 @@ if __name__ == "__main__":
                 fingerprint.new_scan()
                 scanner.start_background_scan()
             elif f_uid:
-                json_request = createJSONRequest("fingerprint", f_uid)
+                json_request = createJSONRequest("finger_print", f_uid)
                 logger.debug(f"Json request: {json_request}")
                 f_uid = None
                 scanner.stop_scan()
@@ -172,7 +176,7 @@ if __name__ == "__main__":
                 fingerprint.new_scan()
                 scanner.start_background_scan()
             elif s_uid:
-                json_request = createJSONRequest("qr", scanner.qr_result)
+                json_request = createJSONRequest("qr_code", scanner.qr_result)
                 logger.debug(f"Json request: {json_request}")
                 s_uid = None
                 fingerprint.stop_scan()
