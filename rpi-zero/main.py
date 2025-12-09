@@ -17,6 +17,8 @@ import dotenv
 
 import RPi.GPIO as GPIO
 
+import argparse
+
 
 DEFAULT_RESPONSE_TIMEOUT_NS = 5 * 1000000000
 RELAY_PIN = 12
@@ -51,7 +53,16 @@ def decodeJSONDecision(data):
 
 if __name__ == "__main__":
 
-    secrets = dotenv.dotenv_values(".env")
+    parser = argparse.ArgumentParser(description="Main system loop for IOT System")
+
+    parser.add_argument("--env_path",
+                        type=str,
+                        default=".env",
+                        help="Path to environment (default: .env)")
+
+    args = parser.parse_args()
+
+    secrets = dotenv.dotenv_values(args.env_path)
     mqtt = mqttClient.MQTTClient()
     
     if secrets:
