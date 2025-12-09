@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
 def createJSONRequest(type, data):
-    if type == "fingerprint":
+    if type == "finger_print":
         data = base64.b64encode(data).decode("ascii")
 
     if type == "qr_code":
