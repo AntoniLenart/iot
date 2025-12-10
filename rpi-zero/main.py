@@ -111,6 +111,8 @@ if __name__ == "__main__":
             f_uid = fingerprint.get_eigenvalues()
             s_uid = scanner.qr_event.wait(0.001)
             r_uid = rfid.readCard()
+            mqtt.msg_payload = False
+            mqtt.msg_timestamp = False
             
             if r_uid:
                 json_request = createJSONRequest("rfid", r_uid)
@@ -121,19 +123,16 @@ if __name__ == "__main__":
                 
                 if mqtt.sendRequest(json_request):
                     timeoutStart = time.time_ns()
-                    msg = None
-                    timestamp = None
                     while time.time_ns() - timeoutStart <= DEFAULT_RESPONSE_TIMEOUT_NS:
                         msg, timestamp = mqtt.getDecision()
 
-                        print("Waiting for mqtt response...")
+                        print("RFID: Waiting for mqtt response...")
+                        logger.debug(f"RFID: Current message: {msg}")
+                        logger.debug(f"RFID: Current timestamp: {timestamp}")
 
                         if not msg or not timestamp:
                             time.sleep(0.2)
                             continue 
-
-                        logger.debug(f"Current message: {msg}")
-                        logger.debug(f"Current timestamp: {timestamp}")
 
                         if timestamp >= timeoutStart and decodeJSONDecision(msg):
                             print("allowed")
@@ -163,15 +162,15 @@ if __name__ == "__main__":
                     while time.time_ns() - timeoutStart <= DEFAULT_RESPONSE_TIMEOUT_NS:
                         msg, timestamp = mqtt.getDecision()
 
-                        logger.debug(f"Current message: {msg}")
-                        logger.debug(f"Current timestamp: {timestamp}")
-                    
-                        print("...")
+                        print("FINGERPRINT: Waiting for mqtt response...")
+                        # print("...")
+                        logger.debug(f"FINGERPRINT: Current message: {msg}")
+                        logger.debug(f"FINGERPRINT: Current timestamp: {timestamp}")
 
                         if not msg or not timestamp:
                             time.sleep(0.2)
                             continue
-                        
+
                         if timestamp >= timeoutStart and decodeJSONDecision(msg):
                             print("allowed")
                             #GPIO.output(RELAY_PIN, GPIO.HIGH)
@@ -200,11 +199,11 @@ if __name__ == "__main__":
                     timeoutStart = time.time_ns()
                     while time.time_ns() - timeoutStart <= DEFAULT_RESPONSE_TIMEOUT_NS:
                         msg, timestamp = mqtt.getDecision()
-
-                        logger.debug(f"Current message: {msg}")
-                        logger.debug(f"Current timestamp: {timestamp}")
                     
-                        print("...")
+                        print("QR: Waiting for mqtt response...")
+                        # print("...")
+                        logger.debug(f"QR: Current message: {msg}")
+                        logger.debug(f"QR: Current timestamp: {timestamp}")
 
                         if not msg or not timestamp:
                             time.sleep(0.2)
